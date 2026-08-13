@@ -113,6 +113,36 @@ describe("replayTrades", () => {
     expect(realized["A"]!.realizedPnl).toBe(200);
   });
 
+  it("applies same-date buys before sells regardless of input order", () => {
+    const { positions, warnings } = replayTrades([
+      t({ date: "2026-01-01", action: "sell", ticker: "A", qty: 5, price: 120 }),
+      t({ date: "2026-01-01", action: "buy", ticker: "A", qty: 10, price: 100 }),
+    ]);
+    expect(warnings).toHaveLength(0);
+    expect(positions[0]!.qty).toBe(5);
+    expect(positions[0]!.realizedPnl).toBe(100);
+  });
+
+  it("credits sell proceeds to the lot currency and warns on currency mismatch", () => {
+    const { cash, warnings } = replayTrades([
+      t({ ticker: "AAPL", qty: 10, price: 150, currency: "USD" }),
+      // 매도 노트에서 currency를 깜빡한 경우 — 기본 KRW로 들어오지만 보유 통화(USD) 기준으로 처리
+      t({ date: "2026-01-02", action: "sell", ticker: "AAPL", qty: 10, price: 160 }),
+    ]);
+    expect(cash["USD"]).toBe(-1500 + 1600);
+    expect(cash["KRW"]).toBeUndefined();
+    expect(warnings.some((w) => w.includes("통화"))).toBe(true);
+  });
+
+  it("warns when buying an existing position in a different currency", () => {
+    const { positions, warnings } = replayTrades([
+      t({ ticker: "AAPL", qty: 10, price: 150, currency: "USD" }),
+      t({ date: "2026-01-02", ticker: "AAPL", qty: 1, price: 200000, currency: "KRW" }),
+    ]);
+    expect(warnings.some((w) => w.includes("통화"))).toBe(true);
+    expect(positions[0]!.currency).toBe("USD");
+  });
+
   it("does not mutate the input array", () => {
     const input = [
       t({ date: "2026-01-02", ticker: "A", qty: 1, price: 1 }),

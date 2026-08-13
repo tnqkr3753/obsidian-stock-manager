@@ -111,6 +111,7 @@ export interface Valuation {
   totalCostBasis: number;
   totalUnrealizedPnl: number;
   allocation: Allocation;
+  missingFx: readonly string[]; // 환율을 구하지 못해 1로 표시된 통화 (경고 대상)
 }
 
 export interface TagExposure {

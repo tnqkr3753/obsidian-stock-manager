@@ -10,6 +10,8 @@ import type { Trade } from "../domain/types";
 export class CsvImportModal extends Modal {
   private text = "";
   private preview: { trades: readonly Trade[]; errors: readonly string[] } | null = null;
+  private previewEl!: HTMLElement;
+  private importBtn!: import("obsidian").ButtonComponent;
 
   constructor(private readonly plugin: StockManagerPlugin) {
     super(plugin.app);
@@ -39,6 +41,7 @@ export class CsvImportModal extends Modal {
           const file = input.files?.[0];
           if (!file) return;
           this.text = await file.text();
+          area.value = this.text;
           this.updatePreview();
         };
         input.click();
@@ -50,32 +53,39 @@ export class CsvImportModal extends Modal {
       attr: { rows: "8", placeholder: "또는 CSV 내용을 붙여넣으세요" },
     });
     area.value = this.text;
+    // 입력마다 전체를 다시 그리면 textarea 포커스가 날아간다 — 미리보기·버튼만 갱신
     area.addEventListener("input", () => {
       this.text = area.value;
       this.updatePreview();
     });
 
-    const previewEl = contentEl.createDiv({ cls: "sm-csv-preview" });
-    if (this.preview) {
-      const { trades, errors } = this.preview;
-      previewEl.createDiv({ text: `읽은 매매 기록 ${trades.length}건, 오류 ${errors.length}건` });
-      errors.slice(0, 5).forEach((e) => previewEl.createDiv({ cls: "sm-basis", text: e }));
-    }
+    this.previewEl = contentEl.createDiv({ cls: "sm-csv-preview" });
 
-    new Setting(contentEl).addButton((btn) =>
+    new Setting(contentEl).addButton((btn) => {
+      this.importBtn = btn;
       btn
-        .setButtonText(
-          this.preview ? `${this.preview.trades.length}건 노트 생성` : "노트 생성",
-        )
+        .setButtonText("노트 생성")
         .setCta()
-        .setDisabled(!this.preview || this.preview.trades.length === 0)
-        .onClick(() => void this.importAll()),
-    );
+        .setDisabled(true)
+        .onClick(() => void this.importAll());
+    });
+
+    this.updatePreview();
   }
 
   private updatePreview(): void {
     this.preview = this.text.trim() ? parseTradesCsv(this.text) : null;
-    this.render();
+    this.previewEl.empty();
+    if (this.preview) {
+      const { trades, errors } = this.preview;
+      this.previewEl.createDiv({
+        text: `읽은 매매 기록 ${trades.length}건, 오류 ${errors.length}건`,
+      });
+      errors.slice(0, 5).forEach((e) => this.previewEl.createDiv({ cls: "sm-basis", text: e }));
+    }
+    const count = this.preview?.trades.length ?? 0;
+    this.importBtn.setButtonText(count > 0 ? `${count}건 노트 생성` : "노트 생성");
+    this.importBtn.setDisabled(count === 0);
   }
 
   private async importAll(): Promise<void> {

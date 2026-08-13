@@ -47,7 +47,8 @@ export function computeState(
   });
 
   const todayPnl = valuation.rows.reduce((sum, row) => {
-    if (row.changePct === undefined) return sum;
+    // changePct가 -100% 이하면 전일가 역산이 0으로 나눗셈이 된다 — 방어적으로 제외
+    if (row.changePct === undefined || row.changePct <= -0.999) return sum;
     const prevValue = row.marketValue / (1 + row.changePct);
     return sum + (row.marketValue - prevValue);
   }, 0);
@@ -75,7 +76,13 @@ export function computeState(
     config: snapshot.config,
     metas: snapshot.metas,
     tradeCount: snapshot.trades.length,
-    warnings: [...snapshot.errors, ...replay.warnings],
+    warnings: [
+      ...snapshot.errors,
+      ...replay.warnings,
+      ...valuation.missingFx.map(
+        (c) => `${c} 환율을 가져오지 못해 1로 표시 중입니다 — 해당 금액이 원화로 잘못 보일 수 있어요.`,
+      ),
+    ],
     lastUpdated,
   };
 }

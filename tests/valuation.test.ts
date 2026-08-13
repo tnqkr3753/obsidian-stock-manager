@@ -64,6 +64,30 @@ describe("valuePortfolio", () => {
     expect(v.rows[0]!.stale).toBe(true);
   });
 
+  it("converts the price using the quote currency even when the position currency differs", () => {
+    // 매매 노트에 currency를 깜빡해 포지션이 KRW로 잡혀도, Yahoo가 USD를 알려주면 시세는 USD로 환산
+    const v = valuePortfolio({
+      positions: [pos({ ticker: "AAPL", qty: 2, avgCost: 100, costBasis: 200 })],
+      cash: {},
+      metas: { AAPL: meta({ ticker: "AAPL" }) },
+      quotes: { AAPL: { price: 230, currency: "USD" } },
+      fx: { USD: 1400 },
+    });
+    expect(v.rows[0]!.marketValue).toBe(2 * 230 * 1400);
+  });
+
+  it("flags rows stale and reports missing fx instead of silently using rate 1", () => {
+    const v = valuePortfolio({
+      positions: [pos({ ticker: "AAPL", qty: 1, avgCost: 100, costBasis: 100, currency: "USD" })],
+      cash: { EUR: 50 },
+      metas: {},
+      quotes: { AAPL: { price: 110, currency: "USD" } },
+      fx: {},
+    });
+    expect(v.rows[0]!.stale).toBe(true);
+    expect([...v.missingFx].sort()).toEqual(["EUR", "USD"]);
+  });
+
   it("computes allocation across stock, bond and cash", () => {
     const v = valuePortfolio({
       positions: [

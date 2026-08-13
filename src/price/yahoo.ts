@@ -34,13 +34,14 @@ async function fetchChartMeta(symbol: string): Promise<Quote | undefined> {
 
   const meta = (res.json as YahooChartResponse).chart?.result?.[0]?.meta;
   const price = meta?.regularMarketPrice;
-  if (price === undefined) return undefined;
+  // 0/null은 거래정지·상장폐지 등 비정상 응답 — 캐시에 들어가면 -100% 가짜 손실이 영속된다
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) return undefined;
 
   const prev = meta?.chartPreviousClose ?? meta?.previousClose;
   return {
     price,
     currency: (meta?.currency ?? "KRW").toUpperCase(),
-    changePct: prev ? (price - prev) / prev : undefined,
+    changePct: typeof prev === "number" && prev > 0 ? (price - prev) / prev : undefined,
     asOf: (meta?.regularMarketTime ?? Math.floor(Date.now() / 1000)) * 1000,
   };
 }

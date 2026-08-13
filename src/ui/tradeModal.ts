@@ -2,6 +2,7 @@ import { Modal, Notice, Setting } from "obsidian";
 import type StockManagerPlugin from "../../main";
 import { parseTrade } from "../data/parse";
 import type { TradeAction } from "../domain/types";
+import { toLocalDateString } from "../util/date";
 
 const ACTION_OPTIONS: Record<TradeAction, string> = {
   buy: "매수",
@@ -19,7 +20,7 @@ const needsQtyPrice = (a: TradeAction): boolean => ["buy", "sell", "opening"].in
 /** 매매 기록 입력 → 매매일지 노트 생성. 검증은 parseTrade를 그대로 재사용한다. */
 export class TradeModal extends Modal {
   private action: TradeAction = "buy";
-  private date = new Date().toISOString().slice(0, 10);
+  private date = toLocalDateString();
   private ticker = "";
   private qty = "";
   private price = "";

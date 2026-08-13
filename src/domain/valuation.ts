@@ -19,19 +19,30 @@ export interface ValuationInput {
 const fxRate = (currency: string, fx: FxMap): number | undefined =>
   currency === "KRW" ? 1 : fx[currency];
 
-/** 리플레이 결과 + 시세 + 환율 → 기준통화(KRW) 평가. 시세·환율이 없으면 평단으로 대체하고 stale 표시. */
+/**
+ * 리플레이 결과 + 시세 + 환율 → 기준통화(KRW) 평가.
+ * 가격은 시세가 알려준 통화(quote.currency)로 환산한다 — 매매 노트의 currency 누락이 평가를 왜곡하지 않도록.
+ * 시세·환율이 없으면 평단으로 대체하고 stale 표시, 누락 환율 통화는 missingFx로 보고한다.
+ */
 export function valuePortfolio(input: ValuationInput): Valuation {
   const { positions, cash, metas, quotes, fx } = input;
+  const missingFx = new Set<string>();
+  const rateOrReport = (currency: string): number | undefined => {
+    const rate = fxRate(currency, fx);
+    if (rate === undefined) missingFx.add(currency);
+    return rate;
+  };
 
   const baseRows = positions.map((pos) => {
     const meta = metas[pos.ticker];
     const quote = quotes[pos.ticker];
-    const rate = fxRate(pos.currency, fx);
-    const stale = !quote || rate === undefined;
+    const costRate = rateOrReport(pos.currency);
+    // 시세가 있으면 가격의 통화는 시세 기준, 없으면 평단(포지션 통화)으로 대체
+    const priceRate = quote ? rateOrReport(quote.currency) : costRate;
+    const stale = !quote || priceRate === undefined || costRate === undefined;
     const price = quote?.price ?? pos.avgCost;
-    const effectiveRate = rate ?? 1;
-    const costBasis = pos.costBasis * effectiveRate;
-    const marketValue = pos.qty * price * effectiveRate;
+    const costBasis = pos.costBasis * (costRate ?? 1);
+    const marketValue = pos.qty * price * (priceRate ?? 1);
     const unrealizedPnl = marketValue - costBasis;
     return {
       ticker: pos.ticker,
@@ -46,8 +57,8 @@ export function valuePortfolio(input: ValuationInput): Valuation {
       marketValue,
       unrealizedPnl,
       returnPct: costBasis === 0 ? 0 : unrealizedPnl / costBasis,
-      realizedPnl: pos.realizedPnl * effectiveRate,
-      dividends: pos.dividends * effectiveRate,
+      realizedPnl: pos.realizedPnl * (costRate ?? 1),
+      dividends: pos.dividends * (costRate ?? 1),
       weight: 0,
       stale,
       path: meta?.path,
@@ -55,7 +66,7 @@ export function valuePortfolio(input: ValuationInput): Valuation {
   });
 
   const totalCash = Object.entries(cash).reduce(
-    (sum, [currency, amount]) => sum + amount * (fxRate(currency, fx) ?? 1),
+    (sum, [currency, amount]) => sum + amount * (rateOrReport(currency) ?? 1),
     0,
   );
   const totalMarketValue = baseRows.reduce((sum, row) => sum + row.marketValue, 0);
@@ -89,5 +100,6 @@ export function valuePortfolio(input: ValuationInput): Valuation {
     totalCostBasis,
     totalUnrealizedPnl: totalMarketValue - totalCostBasis,
     allocation,
+    missingFx: [...missingFx],
   };
 }

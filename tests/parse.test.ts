@@ -101,4 +101,10 @@ describe("parseConfig", () => {
     const r = parseConfig({ type: "stock-config" });
     expect(r.ok && r.value.target).toEqual({ stock: 0.6, bond: 0.2, cash: 0.2 });
   });
+
+  it("normalizes a target whose parts do not sum to 100%", () => {
+    const r = parseConfig({ type: "stock-config", target: { stock: 50, bond: 30, cash: 10 } });
+    expect(r.ok && r.value.target.stock).toBeCloseTo(50 / 90);
+    expect(r.ok && r.value.target.bond).toBeCloseTo(30 / 90);
+  });
 });

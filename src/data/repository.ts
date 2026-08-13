@@ -24,15 +24,20 @@ export class VaultRepository {
     private readonly getTradesFolder: () => string,
   ) {}
 
+  /** rootFolder 또는 tradesFolder 아래인지 — 스캔과 변경 감지가 같은 기준을 쓰도록 단일화. */
+  isWatched(path: string): boolean {
+    const roots = [normalizePath(this.getRootFolder()), normalizePath(this.getTradesFolder())];
+    return roots.some((root) => root === "/" || root === "" || path === root || path.startsWith(root + "/"));
+  }
+
   loadSnapshot(): VaultSnapshot {
-    const root = normalizePath(this.getRootFolder());
     const trades: Trade[] = [];
     const metas: Record<string, StockMeta> = {};
     const errors: string[] = [];
     let config = FALLBACK_CONFIG;
 
     for (const file of this.app.vault.getMarkdownFiles()) {
-      if (root !== "/" && root !== "" && !file.path.startsWith(root + "/")) continue;
+      if (!this.isWatched(file.path)) continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm || typeof fm["type"] !== "string") continue;
 
@@ -69,18 +74,22 @@ export class VaultRepository {
     const folder = normalizePath(this.getTradesFolder());
     await this.ensureFolder(folder);
 
+    // 따옴표·역슬래시·줄바꿈이 그대로 들어가면 YAML이 깨져 노트가 조용히 무시된다
+    const yamlString = (s: string): string =>
+      `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\r\n]+/g, " ")}"`;
+
     const lines = [
       "---",
       "type: trade",
       `date: ${trade.date}`,
       `action: ${trade.action}`,
-      ...(trade.ticker ? [`ticker: "${trade.ticker}"`] : []),
+      ...(trade.ticker ? [`ticker: ${yamlString(trade.ticker)}`] : []),
       ...(trade.qty !== undefined ? [`qty: ${trade.qty}`] : []),
       ...(trade.price !== undefined ? [`price: ${trade.price}`] : []),
       ...(trade.amount !== undefined ? [`amount: ${trade.amount}`] : []),
       `currency: ${trade.currency}`,
       ...(trade.tags && trade.tags.length > 0
-        ? [`tags: [${trade.tags.map((t) => `"${t}"`).join(", ")}]`]
+        ? [`tags: [${trade.tags.map(yamlString).join(", ")}]`]
         : []),
       "---",
       "",

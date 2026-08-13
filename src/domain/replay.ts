@@ -9,16 +9,31 @@ interface Lot {
 const EPSILON = 1e-9;
 
 /**
+ * 날짜가 같은 거래의 순서. Trade는 시각 없이 날짜만 가지므로 파일 열거 순서에 기대면
+ * 당일 매수보다 매도가 먼저 리플레이돼 매도가 통째로 버려질 수 있다 → 매도를 항상 뒤로 보낸다.
+ */
+const SAME_DATE_ORDER: Record<Trade["action"], number> = {
+  opening: 0,
+  deposit: 1,
+  buy: 2,
+  dividend: 3,
+  sell: 4,
+  withdraw: 5,
+};
+
+/**
  * 매매일지 리플레이 — 보유량·평단·실현손익·배당·현금을 전부 일지에서 파생한다.
  * opening은 기존 보유 스냅샷이므로 현금에 영향을 주지 않고, buy/sell/배당/입출금만 현금을 움직인다.
- * 데이터 오류(과매도 등)는 던지지 않고 경고로 수집해 대시보드가 항상 그려지게 한다.
+ * 데이터 오류(과매도·통화 불일치 등)는 던지지 않고 경고로 수집해 대시보드가 항상 그려지게 한다.
  */
 export function replayTrades(trades: readonly Trade[]): ReplayResult {
   const sorted = trades
     .map((trade, index) => ({ trade, index }))
-    .sort((a, b) =>
-      a.trade.date === b.trade.date ? a.index - b.index : a.trade.date < b.trade.date ? -1 : 1,
-    )
+    .sort((a, b) => {
+      if (a.trade.date !== b.trade.date) return a.trade.date < b.trade.date ? -1 : 1;
+      const byAction = SAME_DATE_ORDER[a.trade.action] - SAME_DATE_ORDER[b.trade.action];
+      return byAction !== 0 ? byAction : a.index - b.index;
+    })
     .map((x) => x.trade);
 
   const lots = new Map<string, Lot>();
@@ -63,10 +78,17 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           break;
         }
         const prev = lots.get(trade.ticker) ?? { qty: 0, avgCost: 0, currency };
+        // 기존 보유와 통화가 다르면 평단이 서로 다른 단위를 섞게 된다 — 보유 통화 기준으로 처리하고 경고
+        const lotCurrency = prev.qty > EPSILON ? prev.currency : currency;
+        if (prev.qty > EPSILON && prev.currency !== currency) {
+          warnings.push(
+            `통화 불일치(보유 ${prev.currency}, 기록 ${currency}) — 보유 통화 기준으로 처리했습니다: ${trade.ticker} (${where(trade)})`,
+          );
+        }
         const qty = prev.qty + trade.qty;
         const avgCost = (prev.qty * prev.avgCost + trade.qty * trade.price) / qty;
-        lots.set(trade.ticker, { qty, avgCost, currency: prev.qty > 0 ? prev.currency : currency });
-        if (trade.action === "buy") addCash(currency, -trade.qty * trade.price);
+        lots.set(trade.ticker, { qty, avgCost, currency: lotCurrency });
+        if (trade.action === "buy") addCash(lotCurrency, -trade.qty * trade.price);
         break;
       }
       case "sell": {
@@ -79,6 +101,11 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           warnings.push(`보유하지 않은 종목을 매도했습니다: ${trade.ticker} (${where(trade)})`);
           break;
         }
+        if (prev.currency !== currency) {
+          warnings.push(
+            `통화 불일치(보유 ${prev.currency}, 기록 ${currency}) — 매도 대금을 보유 통화로 입금했습니다: ${trade.ticker} (${where(trade)})`,
+          );
+        }
         const sellQty = Math.min(trade.qty, prev.qty);
         if (sellQty < trade.qty) {
           warnings.push(
@@ -86,7 +113,7 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           );
         }
         addRealized(trade.ticker, sellQty * (trade.price - prev.avgCost), 0);
-        addCash(currency, sellQty * trade.price);
+        addCash(prev.currency, sellQty * trade.price);
         lots.set(trade.ticker, { ...prev, qty: prev.qty - sellQty });
         break;
       }

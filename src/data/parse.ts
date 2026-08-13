@@ -7,6 +7,7 @@ import type {
   TradeAction,
 } from "../domain/types";
 import { err, ok, TRADE_ACTIONS } from "../domain/types";
+import { toLocalDateString } from "../util/date";
 
 type Frontmatter = Record<string, unknown>;
 
@@ -26,7 +27,7 @@ const asNumber = (v: unknown): number | undefined => {
 };
 
 const asDateString = (v: unknown): string | undefined => {
-  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return toLocalDateString(v);
   const s = asString(v);
   if (s && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   return undefined;
@@ -111,8 +112,15 @@ export function parseConfig(fm: Frontmatter): Result<PortfolioConfig> {
   const cash = asRatio(rawTarget["cash"]);
   const complete = stock !== undefined && bond !== undefined && cash !== undefined;
 
+  // 합이 100%가 아니면(예: 50/30/10) 그대로 두면 편차 계산이 왜곡되므로 비례 정규화
+  const sum = complete ? stock + bond + cash : 0;
+  const target =
+    complete && sum > 0
+      ? { stock: stock / sum, bond: bond / sum, cash: cash / sum }
+      : { ...DEFAULT_TARGET };
+
   return ok({
-    target: complete ? { stock, bond, cash } : { ...DEFAULT_TARGET },
+    target,
     concentrationLimit: asRatio(fm["concentrationLimit"]) ?? DEFAULT_CONCENTRATION_LIMIT,
     baseCurrency: "KRW",
   });

@@ -1,4 +1,12 @@
-import { Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, debounce } from "obsidian";
+import {
+  MarkdownRenderChild,
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  WorkspaceLeaf,
+  debounce,
+} from "obsidian";
 import { computeState, type PortfolioState } from "./src/app/state";
 import { VaultRepository } from "./src/data/repository";
 import { replayTrades } from "./src/domain/replay";
@@ -9,14 +17,49 @@ import { renderAllocation, renderHero, renderHoldings } from "./src/ui/render";
 import { TableView, VIEW_TYPE_TABLE } from "./src/ui/tableView";
 import { TradeModal } from "./src/ui/tradeModal";
 import { CsvImportModal } from "./src/ui/csvModal";
+import { toLocalDateString } from "./src/util/date";
 
 const MAX_SNAPSHOTS = 730;
+
+/** stock-portfolio 코드블록 — 노트가 열려 있는 동안 상태 변경 시 다시 그린다. */
+class PortfolioEmbed extends MarkdownRenderChild {
+  constructor(
+    containerEl: HTMLElement,
+    private readonly plugin: StockManagerPlugin,
+  ) {
+    super(containerEl);
+  }
+
+  onload(): void {
+    this.plugin.embeds.add(this);
+    this.render();
+  }
+  onunload(): void {
+    this.plugin.embeds.delete(this);
+  }
+
+  render(): void {
+    const el = this.containerEl;
+    el.empty();
+    el.addClass("sm-view", "sm-embed");
+    const state = this.plugin.state;
+    if (!state) {
+      el.createDiv({ cls: "sm-basis", text: "주식 매니저 데이터를 불러오는 중입니다…" });
+      return;
+    }
+    renderHero(el, state);
+    renderAllocation(el, state);
+    renderHoldings(el, state, (path) => this.plugin.openPath(path));
+  }
+}
 
 export default class StockManagerPlugin extends Plugin {
   data: PersistedData = structuredClone(DEFAULT_DATA);
   repository!: VaultRepository;
   prices!: PriceService;
   state: PortfolioState | undefined;
+  embeds = new Set<PortfolioEmbed>();
+  private pollingId: number | null = null;
 
   async onload(): Promise<void> {
     this.data = { ...structuredClone(DEFAULT_DATA), ...((await this.loadData()) ?? {}) };
@@ -58,15 +101,8 @@ export default class StockManagerPlugin extends Plugin {
       callback: () => void this.refreshQuotes(),
     });
 
-    this.registerMarkdownCodeBlockProcessor("stock-portfolio", (_source, el) => {
-      el.addClass("sm-view", "sm-embed");
-      if (!this.state) {
-        el.createDiv({ cls: "sm-basis", text: "주식 매니저 데이터를 불러오는 중입니다…" });
-        return;
-      }
-      renderHero(el, this.state);
-      renderAllocation(el, this.state);
-      renderHoldings(el, this.state, (path) => this.openPath(path));
+    this.registerMarkdownCodeBlockProcessor("stock-portfolio", (_source, el, ctx) => {
+      ctx.addChild(new PortfolioEmbed(el, this));
     });
 
     this.addSettingTab(new StockManagerSettingTab(this));
@@ -74,13 +110,13 @@ export default class StockManagerPlugin extends Plugin {
     const reloadDebounced = debounce(() => void this.reload(false), 800, true);
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
-        if (file.path.startsWith(this.data.settings.rootFolder + "/")) reloadDebounced();
+        if (this.repository.isWatched(file.path)) reloadDebounced();
       }),
     );
 
     this.app.workspace.onLayoutReady(() => {
       void this.reload(true);
-      this.registerPolling();
+      this.restartPolling();
     });
   }
 
@@ -105,11 +141,11 @@ export default class StockManagerPlugin extends Plugin {
     const snapshot = this.repository.loadSnapshot();
     const replay = replayTrades(snapshot.trades);
     const tickers = replay.positions.map((p) => p.ticker);
-    const currencies = [...new Set(replay.positions.map((p) => p.currency).filter((c) => c !== "KRW"))];
+    const cashCurrencies = Object.keys(replay.cash).filter((c) => c !== "KRW");
 
     const { quotes, fx } = withFetch
-      ? await this.prices.refresh(replay.positions, snapshot.metas)
-      : this.prices.fromCache(tickers, currencies);
+      ? await this.prices.refresh(replay.positions, snapshot.metas, cashCurrencies)
+      : this.prices.fromCache(tickers);
 
     this.state = computeState(
       snapshot,
@@ -132,7 +168,7 @@ export default class StockManagerPlugin extends Plugin {
   }
 
   private async recordSnapshot(totalAssets: number): Promise<void> {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateString();
     const rest = this.data.snapshots.filter((s) => s.date !== today);
     this.data.snapshots = [...rest, { date: today, totalAssets }]
       .sort((a, b) => (a.date < b.date ? -1 : 1))
@@ -147,14 +183,19 @@ export default class StockManagerPlugin extends Plugin {
         if (view instanceof DashboardView || view instanceof TableView) view.render();
       }
     }
+    this.embeds.forEach((embed) => embed.render());
   }
 
-  private registerPolling(): void {
+  /** 설정에서 주기가 바뀌어도 즉시 반영되도록 기존 인터벌을 지우고 다시 건다. */
+  restartPolling(): void {
+    if (this.pollingId !== null) {
+      window.clearInterval(this.pollingId);
+      this.pollingId = null;
+    }
     const minutes = this.data.settings.refreshMinutes;
     if (minutes <= 0) return;
-    this.registerInterval(
-      window.setInterval(() => void this.reload(true), minutes * 60 * 1000),
-    );
+    this.pollingId = window.setInterval(() => void this.reload(true), minutes * 60 * 1000);
+    this.registerInterval(this.pollingId);
   }
 
   private async activateView(type: string, side: "right" | "tab"): Promise<void> {
@@ -210,6 +251,7 @@ class StockManagerSettingTab extends PluginSettingTab {
           const n = Number(v);
           s.refreshMinutes = Number.isFinite(n) && n >= 0 ? n : 5;
           save();
+          this.plugin.restartPolling();
         }),
       );
 
