@@ -1,0 +1,317 @@
+/* Stock Manager — 토스 문법 (회색 바탕 · 흰 카드 · 라운드 20px · 큰 볼드 숫자) */
+
+.sm-view {
+  --sm-ground: var(--background-secondary);
+  --sm-card: var(--background-primary);
+  --sm-card-sub: var(--background-secondary);
+  --sm-ink: var(--text-normal);
+  --sm-ink-2: var(--text-muted);
+  --sm-ink-3: var(--text-faint);
+  --sm-accent: #3182f6;
+  --sm-accent-soft: rgba(49, 130, 246, 0.1);
+  --sm-up: #f04452;
+  --sm-up-soft: rgba(240, 68, 82, 0.1);
+  --sm-down: #3182f6;
+  --sm-down-soft: rgba(49, 130, 246, 0.1);
+  --sm-stock: #3182f6;
+  --sm-bond: #0ca678;
+  --sm-cash: #7048e8;
+  --sm-warn-ink: #b45309;
+  --sm-warn-soft: rgba(217, 119, 6, 0.13);
+  --sm-line: var(--background-modifier-border);
+
+  background: var(--sm-ground);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.theme-dark .sm-view {
+  --sm-accent: #4593fc;
+  --sm-up: #fa5a63;
+  --sm-down: #4593fc;
+  --sm-warn-ink: #f5b04d;
+  --sm-warn-soft: rgba(245, 176, 77, 0.14);
+}
+
+.sm-num { font-variant-numeric: tabular-nums; }
+
+/* ── 카드 ─────────────────────────────── */
+.sm-card {
+  background: var(--sm-card);
+  border-radius: 20px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sm-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sm-card-head h2 {
+  font-size: 0.95em;
+  font-weight: 700;
+  margin: 0;
+}
+.sm-count { color: var(--sm-ink-3); font-weight: 600; }
+.sm-foot { font-size: 0.75em; color: var(--sm-ink-3); }
+.sm-empty { color: var(--sm-ink-2); gap: 6px; }
+
+/* ── 상단바 ───────────────────────────── */
+.sm-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 0;
+}
+.sm-topbar h1 { font-size: 1.15em; font-weight: 800; margin: 0; }
+.sm-topbar-right { display: flex; align-items: center; gap: 8px; }
+.sm-updated { font-size: 0.75em; color: var(--sm-ink-3); }
+.sm-icon-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--sm-ink-2);
+  cursor: pointer;
+  font-size: 1em;
+  padding: 0;
+  box-shadow: none;
+}
+.sm-icon-btn:hover { background: var(--sm-accent-soft); color: var(--sm-accent); }
+
+/* ── 히어로 ───────────────────────────── */
+.sm-hero { gap: 4px; }
+.sm-label { font-size: 0.8em; color: var(--sm-ink-3); }
+.sm-total { font-size: 1.8em; font-weight: 800; letter-spacing: -0.01em; }
+.sm-hero-delta { display: flex; align-items: center; gap: 7px; font-size: 0.9em; font-weight: 700; }
+.sm-hero-delta .sm-pill { border-radius: 8px; padding: 1px 7px; font-size: 0.85em; }
+.sm-up { color: var(--sm-up); }
+.sm-up .sm-pill, .sm-pill.sm-up { background: var(--sm-up-soft); }
+.sm-down { color: var(--sm-down); }
+.sm-down .sm-pill, .sm-pill.sm-down { background: var(--sm-down-soft); }
+.sm-flat { color: var(--sm-ink-2); }
+.sm-basis { font-size: 0.75em; color: var(--sm-ink-3); }
+
+/* ── 자산 추이 ────────────────────────── */
+.sm-trend svg { display: block; width: 100%; height: auto; }
+.sm-trend-area { fill: var(--sm-accent); opacity: 0.12; }
+.sm-trend-line { fill: none; stroke: var(--sm-accent); stroke-width: 2; stroke-linecap: round; }
+.sm-trend-dot { fill: var(--sm-accent); stroke: var(--sm-card); stroke-width: 2; }
+.sm-trend-label { font-size: 9px; fill: var(--sm-ink-3); }
+
+/* ── 자산 구성 ────────────────────────── */
+.sm-alloc-bar {
+  display: flex;
+  gap: 2px;
+  height: 11px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sm-alloc-bar span { height: 100%; }
+span.sm-alloc-stock, .sm-dot.sm-alloc-stock, .sm-dev-fill.sm-alloc-stock { background: var(--sm-stock); }
+span.sm-alloc-bond, .sm-dot.sm-alloc-bond, .sm-dev-fill.sm-alloc-bond { background: var(--sm-bond); }
+span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { background: var(--sm-cash); }
+.sm-alloc-list { display: flex; flex-direction: column; gap: 8px; }
+.sm-alloc-row { display: flex; align-items: center; gap: 8px; font-size: 0.9em; }
+.sm-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.sm-alloc-row .sm-name { font-weight: 600; }
+.sm-alloc-row .sm-pct { color: var(--sm-ink-3); font-size: 0.85em; }
+.sm-alloc-row .sm-amt { margin-left: auto; font-weight: 700; }
+
+/* ── 리밸런싱 ─────────────────────────── */
+.sm-rebal {
+  background: var(--sm-card-sub);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sm-rebal-title { font-size: 0.85em; font-weight: 700; }
+.sm-rebal-title strong { color: var(--sm-accent); }
+.sm-dev-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 62px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78em;
+  color: var(--sm-ink-2);
+}
+.sm-dev-track { position: relative; height: 6px; }
+.sm-dev-axis {
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--sm-line);
+}
+.sm-dev-fill { position: absolute; top: 0; height: 6px; border-radius: 3px; }
+.sm-dev-val { text-align: right; font-weight: 700; }
+.sm-rebal-hint { font-size: 0.78em; color: var(--sm-ink-3); }
+
+/* ── 보유 종목 (대시보드) ─────────────── */
+.sm-holding-list { display: flex; flex-direction: column; }
+.sm-holding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.sm-holding:hover { background: var(--sm-card-sub); }
+.sm-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.7em;
+  font-weight: 800;
+  color: #fff;
+  flex: none;
+  overflow: hidden;
+}
+.sm-avatar-stock { background: var(--sm-stock); }
+.sm-avatar-bond { background: var(--sm-bond); }
+.sm-mid { display: flex; flex-direction: column; min-width: 0; }
+.sm-nm { font-size: 0.9em; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+.sm-ccy, .sm-stale {
+  font-size: 0.72em;
+  font-weight: 600;
+  color: var(--sm-ink-3);
+}
+.sm-stale { color: var(--sm-warn-ink); }
+.sm-sub { font-size: 0.75em; color: var(--sm-ink-3); }
+.sm-right { margin-left: auto; text-align: right; display: flex; flex-direction: column; flex: none; }
+.sm-val { font-size: 0.9em; font-weight: 700; }
+.sm-chg { font-size: 0.78em; font-weight: 700; }
+
+/* ── 태그 노출 ────────────────────────── */
+.sm-tag-list { display: flex; flex-direction: column; gap: 9px; }
+.sm-tag-row {
+  display: grid;
+  grid-template-columns: minmax(58px, auto) 1fr minmax(84px, auto);
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+}
+.sm-tname { font-weight: 600; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.sm-warn-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--sm-warn-soft);
+  color: var(--sm-warn-ink);
+  font-size: 0.78em;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0 5px;
+}
+.sm-tag-track { height: 8px; border-radius: 4px; background: var(--sm-card-sub); overflow: hidden; }
+.sm-tag-fill { height: 100%; border-radius: 4px; background: var(--sm-accent); }
+.sm-tag-val { text-align: right; }
+.sm-tag-val .sm-p { font-weight: 700; }
+.sm-tag-val .sm-a { color: var(--sm-ink-3); font-size: 0.85em; margin-left: 4px; }
+
+/* ── 매매일지 ─────────────────────────── */
+.sm-journal { display: flex; flex-direction: column; gap: 2px; }
+.sm-jrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.sm-jrow:hover { background: var(--sm-card-sub); }
+.sm-jdate { font-size: 0.75em; color: var(--sm-ink-3); width: 32px; flex: none; padding-top: 3px; font-weight: 600; }
+.sm-jbody { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sm-jline { display: flex; align-items: center; gap: 6px; font-size: 0.9em; }
+.sm-jnm { font-weight: 700; }
+.sm-act { font-size: 0.72em; font-weight: 800; border-radius: 6px; padding: 0 5px; }
+.sm-act-buy, .sm-act-opening { background: var(--sm-up-soft); color: var(--sm-up); }
+.sm-act-sell, .sm-act-withdraw { background: var(--sm-down-soft); color: var(--sm-down); }
+.sm-act-dividend, .sm-act-deposit { background: var(--sm-accent-soft); color: var(--sm-accent); }
+.sm-jdetail { font-size: 0.75em; color: var(--sm-ink-3); }
+.sm-jtags { display: flex; gap: 4px; flex-wrap: wrap; }
+.sm-jtag {
+  font-size: 0.72em;
+  font-weight: 600;
+  color: var(--sm-accent);
+  background: var(--sm-accent-soft);
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
+/* ── 경고 카드 ────────────────────────── */
+.sm-warnings ul { margin: 0; padding-left: 16px; font-size: 0.78em; color: var(--sm-warn-ink); }
+
+/* ── 하단 버튼 ────────────────────────── */
+.sm-panel-foot { position: sticky; bottom: 0; padding-top: 4px; }
+.sm-cta {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  background: var(--sm-accent);
+  color: #fff;
+  font-size: 0.95em;
+  font-weight: 800;
+  border-radius: 14px;
+  padding: 12px 0;
+  box-shadow: none;
+}
+.sm-cta:hover { filter: brightness(1.06); }
+
+/* ── 상세 테이블 ──────────────────────── */
+.sm-table-view { gap: 8px; }
+.sm-filter-row { display: flex; gap: 6px; }
+.sm-fchip {
+  border: none;
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--sm-card);
+  color: var(--sm-ink-2);
+  box-shadow: none;
+}
+.sm-fchip[aria-pressed="true"] { background: var(--sm-ink); color: var(--sm-card); }
+.sm-table-scroll {
+  overflow-x: auto;
+  background: var(--sm-card);
+  border-radius: 16px;
+  padding: 6px 14px;
+}
+.sm-htable { border-collapse: collapse; width: 100%; font-size: 0.82em; }
+.sm-htable th {
+  text-align: right;
+  font-size: 0.85em;
+  font-weight: 700;
+  color: var(--sm-ink-3);
+  padding: 8px;
+  border-bottom: 1px solid var(--sm-line);
+  white-space: nowrap;
+}
+.sm-htable th.sm-sortable { cursor: pointer; }
+.sm-htable th.sm-sorted { color: var(--sm-accent); }
+.sm-htable th:nth-child(-n + 2), .sm-htable td:nth-child(-n + 2) { text-align: left; }
+.sm-htable td { text-align: right; padding: 9px 8px; border-bottom: 1px solid var(--sm-line); white-space: nowrap; }
+.sm-htable tbody tr { cursor: pointer; }
+.sm-htable tbody tr:hover td { background: var(--sm-card-sub); }
+.sm-td-name .sm-nm { font-size: 1em; }
+.sm-td-tags { max-width: 160px; white-space: normal !important; }
+.sm-strong { font-weight: 700; color: var(--sm-ink); }
+.sm-muted { color: var(--sm-ink-3); }
+.sm-htable tfoot td { border-bottom: none; border-top: 2px solid var(--sm-line); font-weight: 800; }
+
+/* ── 코드블록 임베드 / 모달 ───────────── */
+.sm-embed { border-radius: 16px; }
+.sm-modal .sm-csv-area { width: 100%; font-family: var(--font-monospace); font-size: 0.82em; }
+.sm-csv-preview { padding: 8px 0; font-size: 0.85em; }

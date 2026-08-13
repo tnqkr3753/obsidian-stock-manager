@@ -1,0 +1,107 @@
+import type { App, TFile } from "obsidian";
+import { normalizePath } from "obsidian";
+import type { PortfolioConfig, StockMeta, Trade } from "../domain/types";
+import { parseConfig, parseStockMeta, parseTrade } from "./parse";
+
+export interface VaultSnapshot {
+  trades: readonly Trade[];
+  metas: Readonly<Record<string, StockMeta>>;
+  config: PortfolioConfig;
+  errors: readonly string[];
+}
+
+const FALLBACK_CONFIG: PortfolioConfig = {
+  target: { stock: 0.6, bond: 0.2, cash: 0.2 },
+  concentrationLimit: 0.4,
+  baseCurrency: "KRW",
+};
+
+/** vault의 마크다운 frontmatter를 읽어 도메인 객체로 변환한다. 쓰기는 매매 노트 생성뿐이다. */
+export class VaultRepository {
+  constructor(
+    private readonly app: App,
+    private readonly getRootFolder: () => string,
+    private readonly getTradesFolder: () => string,
+  ) {}
+
+  loadSnapshot(): VaultSnapshot {
+    const root = normalizePath(this.getRootFolder());
+    const trades: Trade[] = [];
+    const metas: Record<string, StockMeta> = {};
+    const errors: string[] = [];
+    let config = FALLBACK_CONFIG;
+
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (root !== "/" && root !== "" && !file.path.startsWith(root + "/")) continue;
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!fm || typeof fm["type"] !== "string") continue;
+
+      switch (fm["type"]) {
+        case "trade": {
+          const r = parseTrade(fm, file.path);
+          if (r.ok) trades.push(r.value);
+          else errors.push(r.error);
+          break;
+        }
+        case "stock": {
+          const r = parseStockMeta(fm, file.path);
+          if (r.ok) metas[r.value.ticker] = r.value;
+          else errors.push(r.error);
+          break;
+        }
+        case "stock-config": {
+          const r = parseConfig(fm);
+          if (r.ok) config = r.value;
+          else errors.push(r.error);
+          break;
+        }
+        // 2차 예정 타입은 지금은 수집만 하지 않고 통과시킨다.
+        case "macro":
+        case "watch":
+          break;
+      }
+    }
+
+    return { trades, metas, config, errors };
+  }
+
+  async createTradeNote(trade: Trade, memo: string): Promise<TFile> {
+    const folder = normalizePath(this.getTradesFolder());
+    await this.ensureFolder(folder);
+
+    const lines = [
+      "---",
+      "type: trade",
+      `date: ${trade.date}`,
+      `action: ${trade.action}`,
+      ...(trade.ticker ? [`ticker: "${trade.ticker}"`] : []),
+      ...(trade.qty !== undefined ? [`qty: ${trade.qty}`] : []),
+      ...(trade.price !== undefined ? [`price: ${trade.price}`] : []),
+      ...(trade.amount !== undefined ? [`amount: ${trade.amount}`] : []),
+      `currency: ${trade.currency}`,
+      ...(trade.tags && trade.tags.length > 0
+        ? [`tags: [${trade.tags.map((t) => `"${t}"`).join(", ")}]`]
+        : []),
+      "---",
+      "",
+      memo,
+      "",
+    ].join("\n");
+
+    const base = `${trade.date} ${trade.action}${trade.ticker ? ` ${trade.ticker}` : ""}`;
+    return this.app.vault.create(await this.availablePath(folder, base), lines);
+  }
+
+  private async ensureFolder(folder: string): Promise<void> {
+    if (this.app.vault.getFolderByPath(folder)) return;
+    await this.app.vault.createFolder(folder).catch(() => undefined);
+  }
+
+  private async availablePath(folder: string, base: string): Promise<string> {
+    const sanitized = base.replace(/[\\/:*?"<>|]/g, "-");
+    for (let n = 0; ; n++) {
+      const candidate = normalizePath(`${folder}/${sanitized}${n === 0 ? "" : ` ${n}`}.md`);
+      if (!this.app.vault.getAbstractFileByPath(candidate)) return candidate;
+    }
+  }
+}

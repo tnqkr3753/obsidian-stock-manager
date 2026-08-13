@@ -1,0 +1,26 @@
+{
+  "name": "obsidian-stock-manager",
+  "version": "0.1.0",
+  "description": "Toss-style stock portfolio manager for Obsidian — trade journal as the source of truth",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "keywords": ["obsidian", "plugin", "stock", "portfolio"],
+  "author": "passionkdy",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.8.7",
+    "tslib": "^2.8.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.4"
+  }
+}
