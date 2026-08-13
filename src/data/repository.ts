@@ -15,6 +15,7 @@ export interface VaultSnapshot {
 const FALLBACK_CONFIG: PortfolioConfig = {
   target: { stock: 0.6, bond: 0.2, cash: 0.2 },
   concentrationLimit: 0.4,
+  checklist: [],
   baseCurrency: "KRW",
 };
 

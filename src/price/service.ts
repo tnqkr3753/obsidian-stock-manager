@@ -1,6 +1,7 @@
+import type { BenchSeries } from "../domain/benchmark";
 import type { FxMap, Position, Quote, QuoteMap, StockMeta, WatchItem } from "../domain/types";
-import type { PersistedData } from "../settings";
-import { fetchFxToKrw, fetchQuote, toYahooSymbol, type SymbolSource } from "./yahoo";
+import type { BenchmarkSetting, PersistedData } from "../settings";
+import { fetchFxToKrw, fetchQuote, fetchSeries, toYahooSymbol, type SymbolSource } from "./yahoo";
 
 const CONCURRENCY = 4;
 
@@ -123,6 +124,38 @@ export class PriceService {
       Object.entries(store.fxCache).map(([currency, cached]) => [currency, cached.rate]),
     );
     return { quotes, fx };
+  }
+
+  /** 벤치마크 시계열을 하루 1회만 갱신한다 (지수는 일봉이라 그 이상 신선할 필요가 없다). */
+  async refreshBenchmarks(benchmarks: readonly BenchmarkSetting[], range: string): Promise<void> {
+    const store = this.data();
+    const staleBefore = Date.now() - 20 * 60 * 60 * 1000;
+    const targets = benchmarks.filter(
+      (b) => (store.benchCache[b.symbol]?.asOf ?? 0) < staleBefore,
+    );
+    if (targets.length === 0) return;
+
+    const results = await mapWithLimit(targets, CONCURRENCY, async (b) => ({
+      symbol: b.symbol,
+      series: await fetchSeries(b.symbol, range),
+    }));
+    store.benchCache = {
+      ...store.benchCache,
+      ...Object.fromEntries(
+        results
+          .filter((r) => r.series)
+          .map((r) => [r.symbol, { series: r.series!, asOf: Date.now() }]),
+      ),
+    };
+    await this.persist();
+  }
+
+  benchSeries(benchmarks: readonly BenchmarkSetting[]): readonly BenchSeries[] {
+    const store = this.data();
+    return benchmarks.flatMap((b) => {
+      const cached = store.benchCache[b.symbol];
+      return cached ? [{ label: b.label, series: cached.series }] : [];
+    });
   }
 
   lastUpdatedAt(tickers: readonly string[]): number | undefined {

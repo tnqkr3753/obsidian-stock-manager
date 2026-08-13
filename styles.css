@@ -249,6 +249,45 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
   padding: 0 6px;
 }
 
+/* ── 추이 범례 ────────────────────────── */
+.sm-legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.sm-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78em; }
+.sm-legend-item .sm-name { font-weight: 600; }
+.sm-legend-val { font-weight: 700; }
+
+/* ── 이벤트 카드 ──────────────────────── */
+.sm-event-row { cursor: default; }
+.sm-dday {
+  flex: none;
+  min-width: 38px;
+  text-align: center;
+  font-size: 0.72em;
+  font-weight: 800;
+  border-radius: 6px;
+  padding: 2px 5px;
+  margin-top: 2px;
+  background: var(--sm-card-sub);
+  color: var(--sm-ink-2);
+}
+.sm-dday-soon { background: var(--sm-warn-soft); color: var(--sm-warn-ink); }
+
+/* ── 현금흐름 ─────────────────────────── */
+.sm-cashflow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 76px;
+}
+.sm-cf-col { flex: 1; display: flex; flex-direction: column; height: 100%; }
+.sm-cf-bars { flex: 1; display: flex; align-items: flex-end; justify-content: center; }
+.sm-cf-bar { width: 60%; min-height: 2px; border-radius: 4px 4px 0 0; }
+.sm-cf-in { background: var(--sm-accent); }
+.sm-cf-out { background: var(--sm-ink-3); }
+.sm-cf-month { text-align: center; font-size: 0.7em; color: var(--sm-ink-3); padding-top: 4px; }
+
+/* ── 체크리스트 ───────────────────────── */
+.sm-checklist-title { font-size: 0.9em; margin: 14px 0 4px; }
+
 /* ── 워치리스트 ───────────────────────── */
 .sm-target-chip {
   display: inline-flex;

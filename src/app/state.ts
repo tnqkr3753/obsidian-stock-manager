@@ -1,7 +1,10 @@
 import type { VaultSnapshot } from "../data/repository";
+import { computeCashflow, type Cashflow } from "../domain/cashflow";
+import { upcomingEvents, type UpcomingEvent } from "../domain/events";
 import { computeRebalance } from "../domain/rebalance";
 import { replayTrades } from "../domain/replay";
 import { computeTagExposure } from "../domain/tags";
+import { toLocalDateString } from "../util/date";
 import type {
   FxMap,
   MacroMemo,
@@ -36,6 +39,8 @@ export interface PortfolioState {
   recentTrades: readonly Trade[];
   recentMacros: readonly MacroMemo[];
   watchRows: readonly WatchRow[];
+  upcoming: readonly UpcomingEvent[]; // 다가오는 이벤트 (30일)
+  cashflow: Cashflow; // 최근 6개월 입출금 + 누적 투입 원금
   todayPnl: number; // 당일 등락 기반 오늘 손익 (KRW)
   config: PortfolioConfig;
   metas: Readonly<Record<string, StockMeta>>;
@@ -46,6 +51,8 @@ export interface PortfolioState {
 
 const RECENT_TRADES = 5;
 const RECENT_MACROS = 3;
+const EVENT_HORIZON_DAYS = 30;
+const CASHFLOW_MONTHS = 6;
 
 /** vault 스냅샷 + 시세 + 환율 → 화면이 쓰는 모든 파생 상태. 순수 함수라 어느 뷰에서든 재사용된다. */
 export function computeState(
@@ -54,6 +61,7 @@ export function computeState(
   fx: FxMap,
   tolerancePct: number,
   lastUpdated?: number,
+  today: string = toLocalDateString(),
 ): PortfolioState {
   const replay = replayTrades(snapshot.trades);
   const valuation = valuePortfolio({
@@ -101,7 +109,15 @@ export function computeState(
     };
   });
 
+  const allEvents = [
+    ...Object.values(snapshot.metas).flatMap((m) => m.events),
+    ...snapshot.watches.flatMap((w) => w.events),
+    ...snapshot.macros.flatMap((m) => m.events),
+  ];
+
   return {
+    upcoming: upcomingEvents(allEvents, today, EVENT_HORIZON_DAYS),
+    cashflow: computeCashflow(snapshot.trades, today, CASHFLOW_MONTHS),
     valuation,
     tagExposure: computeTagExposure({
       rows: valuation.rows,

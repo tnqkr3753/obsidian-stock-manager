@@ -60,6 +60,49 @@ export async function fetchQuote(symbol: string): Promise<Quote | undefined> {
   }
 }
 
+export interface SeriesPoint {
+  date: string; // YYYY-MM-DD (로컬 기준)
+  close: number;
+}
+
+interface YahooSeriesResponse {
+  chart?: {
+    result?: Array<{
+      timestamp?: number[];
+      indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+    }>;
+  };
+}
+
+const toLocalDate = (epochSec: number): string => {
+  const d = new Date(epochSec * 1000);
+  const shifted = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 10);
+};
+
+/** 일봉 종가 시계열 (벤치마크 오버레이용). range 예: "3mo" | "6mo" | "1y" | "2y" */
+export async function fetchSeries(
+  symbol: string,
+  range: string,
+): Promise<SeriesPoint[] | undefined> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d`;
+    const res = await requestUrl({ url, throw: false });
+    if (res.status !== 200) return undefined;
+
+    const result = (res.json as YahooSeriesResponse).chart?.result?.[0];
+    const timestamps = result?.timestamp ?? [];
+    const closes = result?.indicators?.quote?.[0]?.close ?? [];
+    const points = timestamps.flatMap((ts, i) => {
+      const close = closes[i];
+      return typeof close === "number" && close > 0 ? [{ date: toLocalDate(ts), close }] : [];
+    });
+    return points.length > 0 ? points : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 통화 → KRW 환율. 예: USD → "USDKRW=X" */
 export async function fetchFxToKrw(currency: string): Promise<number | undefined> {
   const quote = await fetchQuote(`${currency.toUpperCase()}KRW=X`);

@@ -77,6 +77,16 @@ describe("parseStockMeta", () => {
     });
   });
 
+  it("parses events from a stock note with the note name as origin", () => {
+    const r = parseStockMeta(
+      { type: "stock", ticker: "005930", name: "삼성전자", events: ["2026-08-20 실적 발표"] },
+      "s.md",
+    );
+    expect(r.ok && r.value.events).toEqual([
+      { date: "2026-08-20", title: "실적 발표", origin: "삼성전자" },
+    ]);
+  });
+
   it("accepts bond asset class and foreign currency", () => {
     const r = parseStockMeta(
       { type: "stock", ticker: "KOSEF10Y", name: "국고채", assetClass: "bond", currency: "USD" },
@@ -139,6 +149,11 @@ describe("parseConfig", () => {
   it("falls back to defaults when fields are missing", () => {
     const r = parseConfig({ type: "stock-config" });
     expect(r.ok && r.value.target).toEqual({ stock: 0.6, bond: 0.2, cash: 0.2 });
+  });
+
+  it("collects the buy checklist items", () => {
+    const r = parseConfig({ type: "stock-config", checklist: ["원칙 확인", " 손절선 정했나 ", ""] });
+    expect(r.ok && r.value.checklist).toEqual(["원칙 확인", "손절선 정했나"]);
   });
 
   it("normalizes a target whose parts do not sum to 100%", () => {

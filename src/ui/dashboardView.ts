@@ -3,6 +3,8 @@ import type StockManagerPlugin from "../../main";
 import { formatTime } from "./format";
 import {
   renderAllocation,
+  renderCashflow,
+  renderEvents,
   renderHero,
   renderHoldings,
   renderJournal,
@@ -67,12 +69,14 @@ export class DashboardView extends ItemView {
     } else {
       const openPath = (path: string): void => this.plugin.openPath(path);
       renderHero(root, state);
-      renderTrend(root, this.plugin.snapshots());
+      renderTrend(root, this.plugin.snapshots(), this.plugin.benchmarkSeries());
       renderAllocation(root, state);
       renderHoldings(root, state, openPath);
       renderTags(root, state);
       renderWatchlist(root, state, openPath);
+      renderEvents(root, state);
       renderJournal(root, state, openPath);
+      renderCashflow(root, state);
       renderMacros(root, state, openPath);
       renderWarnings(root, state);
     }

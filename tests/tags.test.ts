@@ -27,6 +27,7 @@ const meta = (ticker: string, tags: string[]): StockMeta => ({
   assetClass: "stock",
   currency: "KRW",
   tags,
+  events: [],
 });
 
 describe("computeTagExposure", () => {

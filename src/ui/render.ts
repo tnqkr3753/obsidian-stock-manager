@@ -1,4 +1,5 @@
 import type { PortfolioState } from "../app/state";
+import { buildOverlay, type BenchSeries } from "../domain/benchmark";
 import type { AssetSnapshot } from "../settings";
 import {
   formatCompactKrw,
@@ -51,41 +52,81 @@ export function renderHero(parent: HTMLElement, state: PortfolioState): void {
   el.createDiv({ cls: "sm-basis", text: basisParts.join(" · ") });
 }
 
-export function renderTrend(parent: HTMLElement, snapshots: readonly AssetSnapshot[]): void {
-  if (snapshots.length < 2) return;
+const SERIES_COLORS = ["var(--sm-accent)", "var(--sm-bond)", "var(--sm-cash)"];
+const MAX_OVERLAY_SERIES = SERIES_COLORS.length;
+
+/** 자산 추이 + 벤치마크 오버레이. 모든 계열을 창 시작일 = 100으로 지수화해 같은 축에 그린다. */
+export function renderTrend(
+  parent: HTMLElement,
+  snapshots: readonly AssetSnapshot[],
+  benchmarks: readonly BenchSeries[] = [],
+): void {
+  const overlay = buildOverlay(snapshots, benchmarks).slice(0, MAX_OVERLAY_SERIES);
+  if (overlay.length === 0) return;
+
   const el = card(parent);
-  cardHead(el, "자산 추이");
+  cardHead(el, benchmarks.length > 0 ? "자산 추이 · 시장 비교" : "자산 추이");
 
   const W = 360;
-  const H = 110;
+  const H = 120;
   const PAD = { x: 4, top: 8, bottom: 16 };
-  const values = snapshots.map((s) => s.totalAssets);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
   const innerW = W - PAD.x * 2;
   const innerH = H - PAD.top - PAD.bottom;
 
-  const points = snapshots.map((s, i) => ({
-    x: PAD.x + (i / (snapshots.length - 1)) * innerW,
-    y: PAD.top + (1 - (s.totalAssets - min - span * 0.05) / (span * 1.15)) * innerH,
-  }));
-  const line = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
-    .join(" ");
-  const last = points[points.length - 1]!;
-  const area = `${line} L${last.x.toFixed(1)} ${H - PAD.bottom} L${points[0]!.x.toFixed(1)} ${H - PAD.bottom} Z`;
+  const allPoints = overlay.flatMap((s) => s.points);
+  const allDates = allPoints.map((p) => Date.parse(p.date));
+  const t0 = Math.min(...allDates);
+  const t1 = Math.max(...allDates);
+  const tSpan = t1 - t0 || 1;
+  const values = allPoints.map((p) => p.index);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
 
+  const x = (date: string): number => PAD.x + ((Date.parse(date) - t0) / tSpan) * innerW;
+  const y = (index: number): number =>
+    PAD.top + (1 - (index - min + span * 0.08) / (span * 1.16)) * innerH;
+
+  const paths = overlay
+    .map((series, i) => {
+      const d = series.points
+        .map((p, j) => `${j === 0 ? "M" : "L"}${x(p.date).toFixed(1)} ${y(p.index).toFixed(1)}`)
+        .join(" ");
+      const last = series.points[series.points.length - 1]!;
+      const isMine = i === 0;
+      const area = isMine
+        ? `<path d="${d} L${x(last.date).toFixed(1)} ${H - PAD.bottom} L${x(series.points[0]!.date).toFixed(1)} ${H - PAD.bottom} Z" fill="${SERIES_COLORS[0]}" opacity="0.1"/>`
+        : "";
+      return `${area}<path d="${d}" fill="none" stroke="${SERIES_COLORS[i]}" stroke-width="${isMine ? 2 : 1.5}" ${isMine ? "" : 'stroke-dasharray="4 3"'} stroke-linecap="round"/>
+        <circle cx="${x(last.date)}" cy="${y(last.index)}" r="3.5" fill="${SERIES_COLORS[i]}" stroke="var(--sm-card)" stroke-width="1.5"/>`;
+    })
+    .join("");
+
+  const firstDate = new Date(t0).toISOString().slice(5, 10).replace("-", ".");
+  const lastDate = new Date(t1).toISOString().slice(5, 10).replace("-", ".");
   const wrap = el.createDiv({ cls: "sm-trend" });
-  const first = snapshots[0]!;
-  const latest = snapshots[snapshots.length - 1]!;
-  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="총자산 추이">
-    <path d="${area}" class="sm-trend-area"/>
-    <path d="${line}" class="sm-trend-line"/>
-    <circle cx="${last.x}" cy="${last.y}" r="4" class="sm-trend-dot"/>
-    <text x="${PAD.x}" y="${H - 3}" class="sm-trend-label">${first.date.slice(5)}</text>
-    <text x="${W - PAD.x}" y="${H - 3}" text-anchor="end" class="sm-trend-label">${latest.date.slice(5)}</text>
+  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="자산 추이와 벤치마크 비교 (기준일 100 지수)">
+    ${paths}
+    <text x="${PAD.x}" y="${H - 3}" class="sm-trend-label">${firstDate}</text>
+    <text x="${W - PAD.x}" y="${H - 3}" text-anchor="end" class="sm-trend-label">${lastDate}</text>
   </svg>`;
+
+  // 계열이 2개 이상이면 색만으로 구분하지 않도록 범례 + 최종 수익률 직접 라벨
+  if (overlay.length > 1) {
+    const legend = el.createDiv({ cls: "sm-legend sm-num" });
+    overlay.forEach((series, i) => {
+      const last = series.points[series.points.length - 1]!.index;
+      const item = legend.createDiv({ cls: "sm-legend-item" });
+      const dot = item.createSpan({ cls: "sm-dot" });
+      dot.style.background = SERIES_COLORS[i]!;
+      item.createSpan({ cls: "sm-name", text: series.label });
+      item.createSpan({
+        cls: `sm-legend-val ${signClass(last - 100)}`,
+        text: formatSignedPct((last - 100) / 100),
+      });
+    });
+    el.createDiv({ cls: "sm-foot", text: "구간 시작일 = 100 기준 지수" });
+  }
 }
 
 export function renderAllocation(parent: HTMLElement, state: PortfolioState): void {
@@ -317,6 +358,70 @@ export function renderJournal(
       const tags = body.createDiv({ cls: "sm-jtags" });
       trade.tags.forEach((t) => tags.createSpan({ cls: "sm-jtag", text: `#${t}` }));
     }
+  }
+}
+
+export function renderEvents(
+  parent: HTMLElement,
+  state: PortfolioState,
+): void {
+  if (state.upcoming.length === 0) return;
+  const el = card(parent);
+  cardHead(el, "다가오는 이벤트");
+
+  const list = el.createDiv({ cls: "sm-journal sm-num" });
+  for (const event of state.upcoming.slice(0, 5)) {
+    const row = list.createDiv({ cls: "sm-jrow sm-event-row" });
+    row.createSpan({
+      cls: `sm-dday ${event.dday <= 3 ? "sm-dday-soon" : ""}`,
+      text: event.dday === 0 ? "오늘" : `D-${event.dday}`,
+    });
+    const body = row.createDiv({ cls: "sm-jbody" });
+    const line = body.createDiv({ cls: "sm-jline" });
+    line.createSpan({ cls: "sm-jnm", text: event.title });
+    body.createDiv({
+      cls: "sm-jdetail",
+      text: `${event.origin} · ${event.date.slice(5).replace("-", ".")}`,
+    });
+  }
+  el.createDiv({
+    cls: "sm-foot",
+    text: "종목·워치·경제 메모 노트의 events 항목에서 수집 (30일 이내)",
+  });
+}
+
+export function renderCashflow(parent: HTMLElement, state: PortfolioState): void {
+  const { months, totalInvested } = state.cashflow;
+  const hasFlow = months.some((m) => Object.keys(m.net).length > 0);
+  if (!hasFlow && Object.keys(totalInvested).length === 0) return;
+
+  const el = card(parent);
+  cardHead(el, "현금흐름");
+
+  const maxAbs = Math.max(1, ...months.map((m) => Math.abs(m.net["KRW"] ?? 0)));
+  const chart = el.createDiv({ cls: "sm-cashflow sm-num" });
+  for (const month of months) {
+    const net = month.net["KRW"] ?? 0;
+    const col = chart.createDiv({ cls: "sm-cf-col" });
+    const barArea = col.createDiv({ cls: "sm-cf-bars" });
+    const bar = barArea.createDiv({
+      cls: `sm-cf-bar ${net >= 0 ? "sm-cf-in" : "sm-cf-out"}`,
+    });
+    bar.style.height = `${(Math.abs(net) / maxAbs) * 100}%`;
+    if (net !== 0) bar.setAttribute("title", formatSignedKrw(net));
+    col.createDiv({ cls: "sm-cf-month", text: month.month.slice(5) + "월" });
+  }
+
+  const foreign = Object.entries(totalInvested).filter(([c]) => c !== "KRW");
+  const investedParts = [
+    ...(totalInvested["KRW"] !== undefined ? [formatKrw(totalInvested["KRW"])] : []),
+    ...foreign.map(([currency, value]) => formatNative(value, currency)),
+  ];
+  if (investedParts.length > 0) {
+    el.createDiv({
+      cls: "sm-basis",
+      text: `누적 투입 원금 ${investedParts.join(" · ")} · 막대는 월별 순입출금(KRW)`,
+    });
   }
 }
 

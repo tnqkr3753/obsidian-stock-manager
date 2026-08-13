@@ -26,6 +26,8 @@ export interface Trade {
   path?: string; // vault 내 노트 경로
 }
 
+import type { CalendarEvent } from "./events";
+
 /** 종목 메타 노트 (태그·자산군·통화). */
 export interface StockMeta {
   ticker: string;
@@ -33,6 +35,7 @@ export interface StockMeta {
   assetClass: HoldingClass;
   currency: string;
   tags: readonly string[];
+  events: readonly CalendarEvent[]; // 실적 발표·배당락 등
   market?: string;
   yahooSymbol?: string; // 시세 조회용 심볼 재정의 (기본: ticker)
   path?: string;
@@ -41,6 +44,7 @@ export interface StockMeta {
 export interface PortfolioConfig {
   target: Allocation; // 0~1 비율
   concentrationLimit: number; // 0~1, 태그 집중 경고 기준
+  checklist: readonly string[]; // 매수 전 확인 항목 (매매 Modal에 표시)
   baseCurrency: "KRW";
 }
 
@@ -151,6 +155,7 @@ export interface MacroMemo {
   date: string;
   title: string;
   tags: readonly string[];
+  events: readonly CalendarEvent[]; // FOMC 등 거시 일정
   path?: string;
 }
 
@@ -161,6 +166,7 @@ export interface WatchItem {
   targetPrice?: number; // 종목 통화
   currency: string;
   tags: readonly string[];
+  events: readonly CalendarEvent[];
   market?: string;
   yahooSymbol?: string;
   path?: string;

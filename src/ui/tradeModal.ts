@@ -28,6 +28,7 @@ export class TradeModal extends Modal {
   private currency = "KRW";
   private tags = "";
   private memo = "";
+  private checks: boolean[] = [];
 
   constructor(private readonly plugin: StockManagerPlugin) {
     super(plugin.app);
@@ -84,6 +85,20 @@ export class TradeModal extends Modal {
       .setDesc("쉼표 구분. 예: 원칙매수, 분할매수")
       .addText((t) => t.setValue(this.tags).onChange((v) => (this.tags = v)));
 
+    // 매수 전 체크리스트 — config 노트의 checklist 항목. 상태는 노트 본문에 기록된다.
+    const checklist = this.action === "buy" ? (this.plugin.state?.config.checklist ?? []) : [];
+    if (checklist.length > 0) {
+      if (this.checks.length !== checklist.length) {
+        this.checks = checklist.map(() => false);
+      }
+      contentEl.createEl("h3", { text: "매수 체크리스트", cls: "sm-checklist-title" });
+      checklist.forEach((item, i) => {
+        new Setting(contentEl).setName(item).addToggle((toggle) =>
+          toggle.setValue(this.checks[i] ?? false).onChange((v) => (this.checks[i] = v)),
+        );
+      });
+    }
+
     new Setting(contentEl).setName("메모 (노트 본문)").addTextArea((t) => {
       t.setPlaceholder("매매 근거를 남겨두면 나중에 회고할 때 좋습니다.")
         .setValue(this.memo)
@@ -119,8 +134,21 @@ export class TradeModal extends Modal {
       return;
     }
 
+    const checklist = this.action === "buy" ? (this.plugin.state?.config.checklist ?? []) : [];
+    const memoWithChecklist =
+      checklist.length > 0
+        ? [
+            this.memo,
+            "",
+            "### 매수 체크리스트",
+            ...checklist.map((item, i) => `- [${this.checks[i] ? "x" : " "}] ${item}`),
+          ]
+            .join("\n")
+            .trim()
+        : this.memo;
+
     try {
-      const file = await this.plugin.repository.createTradeNote(result.value, this.memo);
+      const file = await this.plugin.repository.createTradeNote(result.value, memoWithChecklist);
       new Notice(`기록했어요: ${file.basename}`);
       this.close();
       await this.plugin.reload();

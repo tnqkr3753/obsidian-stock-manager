@@ -9,6 +9,8 @@ import {
 } from "obsidian";
 import { computeState, type PortfolioState } from "./src/app/state";
 import { VaultRepository } from "./src/data/repository";
+import { SnapshotStore } from "./src/data/snapshotStore";
+import type { BenchSeries } from "./src/domain/benchmark";
 import { replayTrades } from "./src/domain/replay";
 import { buildMonthlyReportMarkdown, computeMonthlyReport } from "./src/domain/report";
 import { PriceService, quoteTickers } from "./src/price/service";
@@ -61,6 +63,8 @@ export default class StockManagerPlugin extends Plugin {
   state: PortfolioState | undefined;
   embeds = new Set<PortfolioEmbed>();
   private pollingId: number | null = null;
+  private snapshotStore!: SnapshotStore;
+  private snapshotList: AssetSnapshot[] = [];
 
   async onload(): Promise<void> {
     this.data = { ...structuredClone(DEFAULT_DATA), ...((await this.loadData()) ?? {}) };
@@ -71,6 +75,7 @@ export default class StockManagerPlugin extends Plugin {
       () => this.data.settings.rootFolder,
       () => this.data.settings.tradesFolder,
     );
+    this.snapshotStore = new SnapshotStore(this.app, () => this.data.settings.rootFolder);
     this.prices = new PriceService(
       () => this.data,
       () => this.saveData(this.data),
@@ -131,8 +136,11 @@ export default class StockManagerPlugin extends Plugin {
     );
 
     this.app.workspace.onLayoutReady(() => {
-      void this.reload(true);
-      this.restartPolling();
+      void (async () => {
+        await this.loadSnapshots();
+        await this.reload(true);
+        this.restartPolling();
+      })();
     });
   }
 
@@ -141,7 +149,30 @@ export default class StockManagerPlugin extends Plugin {
   }
 
   snapshots(): readonly AssetSnapshot[] {
-    return this.data.snapshots;
+    return this.snapshotList;
+  }
+
+  benchmarkSeries(): readonly BenchSeries[] {
+    return this.prices.benchSeries(this.data.settings.benchmarks);
+  }
+
+  /** vault의 snapshots.json을 원본으로 로드하고, 구버전 data.json 스냅샷은 1회 머지 후 비운다. */
+  private async loadSnapshots(): Promise<void> {
+    const vaultSnapshots = await this.snapshotStore.load();
+    this.snapshotList = this.snapshotStore.merge(vaultSnapshots, this.data.snapshots);
+    if (this.data.snapshots.length > 0) {
+      await this.snapshotStore.save(this.snapshotList);
+      this.data.snapshots = [];
+      await this.saveData(this.data);
+    }
+  }
+
+  /** 스냅샷 구간 길이에 맞는 야후 range 파라미터. */
+  private benchRange(): string {
+    const first = this.snapshotList[0]?.date;
+    if (!first) return "3mo";
+    const days = (Date.now() - Date.parse(first)) / 86_400_000;
+    return days < 95 ? "3mo" : days < 185 ? "6mo" : days < 370 ? "1y" : "2y";
   }
 
   openTradeModal(): void {
@@ -159,6 +190,9 @@ export default class StockManagerPlugin extends Plugin {
     const tickers = quoteTickers(replay.positions, snapshot.watches);
     const cashCurrencies = Object.keys(replay.cash).filter((c) => c !== "KRW");
 
+    if (withFetch) {
+      await this.prices.refreshBenchmarks(this.data.settings.benchmarks, this.benchRange());
+    }
     const { quotes, fx } = withFetch
       ? await this.prices.refresh(replay.positions, snapshot.metas, cashCurrencies, snapshot.watches)
       : this.prices.fromCache(tickers);
@@ -213,7 +247,7 @@ export default class StockManagerPlugin extends Plugin {
     const report = computeMonthlyReport({
       trades: snapshot.trades,
       sellEvents: replay.sellEvents,
-      snapshots: this.data.snapshots,
+      snapshots: this.snapshotList,
       month,
     });
 
@@ -231,11 +265,11 @@ export default class StockManagerPlugin extends Plugin {
 
   private async recordSnapshot(totalAssets: number): Promise<void> {
     const today = toLocalDateString();
-    const rest = this.data.snapshots.filter((s) => s.date !== today);
-    this.data.snapshots = [...rest, { date: today, totalAssets }]
+    const rest = this.snapshotList.filter((s) => s.date !== today);
+    this.snapshotList = [...rest, { date: today, totalAssets }]
       .sort((a, b) => (a.date < b.date ? -1 : 1))
       .slice(-MAX_SNAPSHOTS);
-    await this.saveData(this.data);
+    await this.snapshotStore.save(this.snapshotList);
   }
 
   private rerenderViews(): void {
@@ -326,6 +360,26 @@ class StockManagerSettingTab extends PluginSettingTab {
           s.rebalanceTolerance = Number.isFinite(n) && n >= 0 ? n : 1;
           save();
         }),
+      );
+
+    new Setting(containerEl)
+      .setName("벤치마크")
+      .setDesc("자산 추이에 겹칠 지수. '심볼=라벨' 쉼표 구분, 최대 2개 표시. 예: ^KS11=KOSPI, ^GSPC=S&P500")
+      .addText((t) =>
+        t
+          .setValue(s.benchmarks.map((b) => `${b.symbol}=${b.label}`).join(", "))
+          .onChange((v) => {
+            s.benchmarks = v
+              .split(",")
+              .map((part) => part.trim())
+              .filter((part) => part !== "")
+              .map((part) => {
+                const [symbol, label] = part.split("=").map((x) => x.trim());
+                return { symbol: symbol ?? "", label: label || symbol || "" };
+              })
+              .filter((b) => b.symbol !== "");
+            save();
+          }),
       );
 
     new Setting(containerEl)

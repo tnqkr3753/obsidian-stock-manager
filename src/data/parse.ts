@@ -9,6 +9,7 @@ import type {
   WatchItem,
 } from "../domain/types";
 import { err, ok, TRADE_ACTIONS } from "../domain/types";
+import { parseEventStrings } from "../domain/events";
 import { toLocalDateString } from "../util/date";
 
 type Frontmatter = Record<string, unknown>;
@@ -93,12 +94,14 @@ export function parseStockMeta(fm: Frontmatter, path: string): Result<StockMeta>
   const rawClass = asString(fm["assetClass"]);
   const assetClass: HoldingClass = rawClass === "bond" ? "bond" : "stock";
 
+  const name = asString(fm["name"]) ?? ticker;
   return ok({
     ticker,
-    name: asString(fm["name"]) ?? ticker,
+    name,
     assetClass,
     currency: (asString(fm["currency"]) ?? "KRW").toUpperCase(),
     tags: asTags(fm["tags"]),
+    events: parseEventStrings(Array.isArray(fm["events"]) ? fm["events"] : [], name),
     market: asString(fm["market"]),
     yahooSymbol: asString(fm["yahooSymbol"]),
     path,
@@ -112,10 +115,12 @@ export function parseMacro(fm: Frontmatter, path: string): Result<MacroMemo> {
   if (!date) return err(`경제 메모에 date가 없습니다: ${path}`);
 
   const basename = path.split("/").pop()?.replace(/\.md$/, "") ?? path;
+  const title = asString(fm["title"]) ?? basename;
   return ok({
     date,
-    title: asString(fm["title"]) ?? basename,
+    title,
     tags: asTags(fm["tags"]),
+    events: parseEventStrings(Array.isArray(fm["events"]) ? fm["events"] : [], title),
     path,
   });
 }
@@ -126,12 +131,14 @@ export function parseWatch(fm: Frontmatter, path: string): Result<WatchItem> {
   const ticker = asString(fm["ticker"]);
   if (!ticker) return err(`워치 노트에 ticker가 없습니다: ${path}`);
 
+  const name = asString(fm["name"]) ?? ticker;
   return ok({
     ticker,
-    name: asString(fm["name"]) ?? ticker,
+    name,
     targetPrice: asNumber(fm["targetPrice"]),
     currency: (asString(fm["currency"]) ?? "KRW").toUpperCase(),
     tags: asTags(fm["tags"]),
+    events: parseEventStrings(Array.isArray(fm["events"]) ? fm["events"] : [], name),
     market: asString(fm["market"]),
     yahooSymbol: asString(fm["yahooSymbol"]),
     path,
@@ -154,9 +161,14 @@ export function parseConfig(fm: Frontmatter): Result<PortfolioConfig> {
       ? { stock: stock / sum, bond: bond / sum, cash: cash / sum }
       : { ...DEFAULT_TARGET };
 
+  const checklist = (Array.isArray(fm["checklist"]) ? fm["checklist"] : [])
+    .map((item) => String(item).trim())
+    .filter((item) => item !== "");
+
   return ok({
     target,
     concentrationLimit: asRatio(fm["concentrationLimit"]) ?? DEFAULT_CONCENTRATION_LIMIT,
+    checklist,
     baseCurrency: "KRW",
   });
 }

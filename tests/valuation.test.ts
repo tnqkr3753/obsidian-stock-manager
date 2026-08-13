@@ -19,6 +19,7 @@ const meta = (partial: Partial<StockMeta>): StockMeta => ({
   assetClass: "stock",
   currency: "KRW",
   tags: [],
+  events: [],
   ...partial,
 });
 

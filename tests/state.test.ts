@@ -11,6 +11,7 @@ const snapshot = (watches: WatchItem[]): VaultSnapshot => ({
   config: {
     target: { stock: 0.6, bond: 0.2, cash: 0.2 },
     concentrationLimit: 0.4,
+    checklist: [],
     baseCurrency: "KRW",
   },
   errors: [],
@@ -21,6 +22,7 @@ const watch = (partial: Partial<WatchItem>): WatchItem => ({
   name: "애플",
   currency: "KRW",
   tags: [],
+  events: [],
   ...partial,
 });
 
