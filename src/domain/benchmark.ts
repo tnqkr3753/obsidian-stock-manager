@@ -39,19 +39,18 @@ export function buildOverlay(
   const windowStart = mine[0]!.date;
   const windowEnd = mine[mine.length - 1]!.date;
 
-  const result: OverlaySeries[] = [
-    { label: MY_LABEL, points: indexTo100(mine.map((s) => ({ date: s.date, value: s.totalAssets }))) },
-  ];
+  // 기준값이 0 이하면 지수화가 불가능하다 — 빈 points를 가진 계열을 내보내면 렌더러가 깨진다
+  const myPoints = indexTo100(mine.map((s) => ({ date: s.date, value: s.totalAssets })));
+  if (myPoints.length < 2) return [];
+  const result: OverlaySeries[] = [{ label: MY_LABEL, points: myPoints }];
 
   for (const bench of benchmarks) {
     const clipped = [...bench.series]
       .filter((p) => p.date >= windowStart && p.date <= windowEnd)
       .sort((a, b) => (a.date < b.date ? -1 : 1));
-    if (clipped.length < 2) continue;
-    result.push({
-      label: bench.label,
-      points: indexTo100(clipped.map((p) => ({ date: p.date, value: p.close }))),
-    });
+    const points = indexTo100(clipped.map((p) => ({ date: p.date, value: p.close })));
+    if (points.length < 2) continue;
+    result.push({ label: bench.label, points });
   }
   return result;
 }

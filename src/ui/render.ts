@@ -65,7 +65,8 @@ export function renderTrend(
   if (overlay.length === 0) return;
 
   const el = card(parent);
-  cardHead(el, benchmarks.length > 0 ? "자산 추이 · 시장 비교" : "자산 추이");
+  // 제목은 설정이 아니라 실제로 그려지는 계열 수를 따른다
+  cardHead(el, overlay.length > 1 ? "자산 추이 · 시장 비교" : "자산 추이");
 
   const W = 360;
   const H = 120;

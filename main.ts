@@ -65,6 +65,8 @@ export default class StockManagerPlugin extends Plugin {
   private pollingId: number | null = null;
   private snapshotStore!: SnapshotStore;
   private snapshotList: AssetSnapshot[] = [];
+  private snapshotsReady = false; // loadSnapshots 완료 전 저장·리포트 차단 (빈 리스트로 이력 덮어쓰기 방지)
+  private snapshotsWritable = true; // 파일 파싱 실패 시 false — 저장하면 이력이 파괴되므로 읽기 전용
 
   async onload(): Promise<void> {
     this.data = { ...structuredClone(DEFAULT_DATA), ...((await this.loadData()) ?? {}) };
@@ -137,8 +139,20 @@ export default class StockManagerPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       void (async () => {
-        await this.loadSnapshots();
-        await this.reload(true);
+        // 어느 단계가 실패해도 폴링은 반드시 시작돼야 한다 — 조용한 전면 정지 방지
+        try {
+          await this.loadSnapshots();
+        } catch (e) {
+          console.error("[stock-manager] 스냅샷 로드 실패", e);
+          this.snapshotsWritable = false;
+          new Notice("자산 스냅샷 로드에 실패해 스냅샷 저장을 중단합니다.");
+        }
+        try {
+          await this.reload(true);
+        } catch (e) {
+          console.error("[stock-manager] 초기 로드 실패", e);
+          new Notice("주식 매니저 초기 로드에 실패했습니다. 콘솔을 확인해주세요.");
+        }
         this.restartPolling();
       })();
     });
@@ -158,12 +172,32 @@ export default class StockManagerPlugin extends Plugin {
 
   /** vault의 snapshots.json을 원본으로 로드하고, 구버전 data.json 스냅샷은 1회 머지 후 비운다. */
   private async loadSnapshots(): Promise<void> {
-    const vaultSnapshots = await this.snapshotStore.load();
-    this.snapshotList = this.snapshotStore.merge(vaultSnapshots, this.data.snapshots);
-    if (this.data.snapshots.length > 0) {
+    const { snapshots: vaultSnapshots, healthy } = await this.snapshotStore.load();
+    this.snapshotsWritable = healthy;
+    if (!healthy) {
+      new Notice(
+        "snapshots.json을 읽지 못했습니다 — 이력 보호를 위해 스냅샷 저장을 중단합니다. 파일을 확인해주세요.",
+        10_000,
+      );
+    }
+    this.snapshotList = this.snapshotStore
+      .merge(vaultSnapshots, this.data.snapshots)
+      .slice(-MAX_SNAPSHOTS);
+    if (healthy && this.data.snapshots.length > 0) {
       await this.snapshotStore.save(this.snapshotList);
       this.data.snapshots = [];
       await this.saveData(this.data);
+    }
+    this.snapshotsReady = true;
+  }
+
+  /** 데이터 폴더 변경 시 스냅샷 파일을 따라 옮긴다 — 안 옮기면 이력이 실종된 것처럼 보인다. */
+  async handleRootFolderChange(oldRoot: string): Promise<void> {
+    try {
+      await this.snapshotStore.moveFrom(oldRoot);
+    } catch (e) {
+      console.error("[stock-manager] snapshots.json 이동 실패", e);
+      new Notice(`snapshots.json을 새 폴더로 옮기지 못했습니다: ${String(e)}`);
     }
   }
 
@@ -212,6 +246,9 @@ export default class StockManagerPlugin extends Plugin {
     this.rerenderViews();
   }
 
+  /** 설정 변경 등에서 호출하는 디바운스된 시세 갱신 (키 입력마다 fetch가 나가지 않게). */
+  requestQuoteRefresh = debounce(() => void this.reload(true), 2500, true);
+
   async refreshQuotes(): Promise<void> {
     new Notice("시세를 갱신하는 중…");
     await this.reload(true);
@@ -238,6 +275,10 @@ export default class StockManagerPlugin extends Plugin {
 
   /** 지난달 매매·손익·자산 변화를 집계한 리포트 노트를 생성하고 연다. */
   private async createMonthlyReport(): Promise<void> {
+    if (!this.snapshotsReady) {
+      new Notice("스냅샷을 아직 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     const now = new Date();
     const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const month = toLocalDateString(prev).slice(0, 7);
@@ -264,12 +305,23 @@ export default class StockManagerPlugin extends Plugin {
   }
 
   private async recordSnapshot(totalAssets: number): Promise<void> {
+    // 로드 완료 전(빈 리스트)이나 파일 손상 상태에서 저장하면 동기화된 이력을 덮어써 파괴한다
+    if (!this.snapshotsReady || !this.snapshotsWritable) return;
+
     const today = toLocalDateString();
-    const rest = this.snapshotList.filter((s) => s.date !== today);
-    this.snapshotList = [...rest, { date: today, totalAssets }]
+    const existing = this.snapshotList.find((s) => s.date === today);
+    if (existing && existing.totalAssets === totalAssets) return; // 무변경 재작성은 동기화 낭비
+
+    this.snapshotList = [...this.snapshotList.filter((s) => s.date !== today), { date: today, totalAssets }]
       .sort((a, b) => (a.date < b.date ? -1 : 1))
       .slice(-MAX_SNAPSHOTS);
-    await this.snapshotStore.save(this.snapshotList);
+    try {
+      await this.snapshotStore.save(this.snapshotList);
+    } catch (e) {
+      // 저장 실패가 reload 전체(뷰 갱신 포함)를 중단시키면 안 된다
+      console.error("[stock-manager] 스냅샷 저장 실패", e);
+      new Notice(`자산 스냅샷 저장에 실패했습니다: ${String(e)}`);
+    }
   }
 
   private rerenderViews(): void {
@@ -321,11 +373,13 @@ class StockManagerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("데이터 폴더")
-      .setDesc("이 폴더 아래의 trade/stock/config 노트를 스캔합니다.")
+      .setDesc("이 폴더 아래의 trade/stock/config 노트를 스캔합니다. 스냅샷 파일도 함께 이동합니다.")
       .addText((t) =>
         t.setValue(s.rootFolder).onChange((v) => {
+          const oldRoot = s.rootFolder;
           s.rootFolder = v.trim() || "Stocks";
           save();
+          if (oldRoot !== s.rootFolder) void this.plugin.handleRootFolderChange(oldRoot);
         }),
       );
 
@@ -374,11 +428,15 @@ class StockManagerSettingTab extends PluginSettingTab {
               .map((part) => part.trim())
               .filter((part) => part !== "")
               .map((part) => {
-                const [symbol, label] = part.split("=").map((x) => x.trim());
-                return { symbol: symbol ?? "", label: label || symbol || "" };
+                // 야후 심볼에도 '='가 들어간다 (GC=F 등) — 마지막 '='만 라벨 구분자로 취급
+                const cut = part.lastIndexOf("=");
+                const symbol = (cut < 0 ? part : part.slice(0, cut)).trim();
+                const label = (cut < 0 ? "" : part.slice(cut + 1)).trim() || symbol;
+                return { symbol, label };
               })
               .filter((b) => b.symbol !== "");
             save();
+            this.plugin.requestQuoteRefresh(); // 새 벤치마크가 다음 폴링까지 빈 채로 남지 않도록
           }),
       );
 

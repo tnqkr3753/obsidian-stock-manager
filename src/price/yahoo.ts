@@ -74,11 +74,12 @@ interface YahooSeriesResponse {
   };
 }
 
-const toLocalDate = (epochSec: number): string => {
-  const d = new Date(epochSec * 1000);
-  const shifted = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return shifted.toISOString().slice(0, 10);
-};
+/**
+ * 일봉 timestamp → 거래일. 세션 시작 epoch를 사용자 로컬 시간대로 바꾸면 비KST 사용자에게
+ * 하루 밀린 날짜가 나온다(KOSPI 09:00 KST = 00:00 UTC). UTC 달력일이 두 시장 모두에서 거래일과 일치한다.
+ */
+const toTradingDate = (epochSec: number): string =>
+  new Date(epochSec * 1000).toISOString().slice(0, 10);
 
 /** 일봉 종가 시계열 (벤치마크 오버레이용). range 예: "3mo" | "6mo" | "1y" | "2y" */
 export async function fetchSeries(
@@ -95,7 +96,7 @@ export async function fetchSeries(
     const closes = result?.indicators?.quote?.[0]?.close ?? [];
     const points = timestamps.flatMap((ts, i) => {
       const close = closes[i];
-      return typeof close === "number" && close > 0 ? [{ date: toLocalDate(ts), close }] : [];
+      return typeof close === "number" && close > 0 ? [{ date: toTradingDate(ts), close }] : [];
     });
     return points.length > 0 ? points : undefined;
   } catch {

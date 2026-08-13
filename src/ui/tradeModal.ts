@@ -94,7 +94,9 @@ export class TradeModal extends Modal {
       contentEl.createEl("h3", { text: "매수 체크리스트", cls: "sm-checklist-title" });
       checklist.forEach((item, i) => {
         new Setting(contentEl).setName(item).addToggle((toggle) =>
-          toggle.setValue(this.checks[i] ?? false).onChange((v) => (this.checks[i] = v)),
+          toggle
+            .setValue(this.checks[i] ?? false)
+            .onChange((v) => (this.checks = this.checks.map((c, idx) => (idx === i ? v : c)))),
         );
       });
     }

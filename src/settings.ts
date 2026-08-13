@@ -37,7 +37,7 @@ export interface PersistedData {
   settings: StockManagerSettings;
   quoteCache: Record<string, { price: number; currency: string; changePct?: number; asOf: number }>;
   fxCache: Record<string, { rate: number; asOf: number }>;
-  benchCache: Record<string, { series: { date: string; close: number }[]; asOf: number }>;
+  benchCache: Record<string, { series: { date: string; close: number }[]; asOf: number; range?: string }>;
   snapshots: AssetSnapshot[];
 }
 

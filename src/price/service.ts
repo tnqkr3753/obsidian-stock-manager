@@ -126,13 +126,15 @@ export class PriceService {
     return { quotes, fx };
   }
 
-  /** 벤치마크 시계열을 하루 1회만 갱신한다 (지수는 일봉이라 그 이상 신선할 필요가 없다). */
+  /** 벤치마크 시계열을 하루 1회만 갱신한다. 요청 range가 캐시와 다르면 신선해도 다시 받는다. */
   async refreshBenchmarks(benchmarks: readonly BenchmarkSetting[], range: string): Promise<void> {
     const store = this.data();
     const staleBefore = Date.now() - 20 * 60 * 60 * 1000;
-    const targets = benchmarks.filter(
-      (b) => (store.benchCache[b.symbol]?.asOf ?? 0) < staleBefore,
-    );
+    const targets = benchmarks.filter((b) => {
+      const cached = store.benchCache[b.symbol];
+      // range가 짧은 캐시를 그대로 쓰면 지수화 기준일이 내 자산과 어긋난다
+      return !cached || cached.asOf < staleBefore || cached.range !== range;
+    });
     if (targets.length === 0) return;
 
     const results = await mapWithLimit(targets, CONCURRENCY, async (b) => ({
@@ -144,7 +146,7 @@ export class PriceService {
       ...Object.fromEntries(
         results
           .filter((r) => r.series)
-          .map((r) => [r.symbol, { series: r.series!, asOf: Date.now() }]),
+          .map((r) => [r.symbol, { series: r.series!, asOf: Date.now(), range }]),
       ),
     };
     await this.persist();

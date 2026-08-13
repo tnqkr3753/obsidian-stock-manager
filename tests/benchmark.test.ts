@@ -42,4 +42,12 @@ describe("buildOverlay", () => {
   it("returns empty when my snapshots cannot form a line", () => {
     expect(buildOverlay([{ date: "2026-07-01", totalAssets: 1 }], [])).toEqual([]);
   });
+
+  it("returns empty instead of an empty-point series when the first snapshot is zero", () => {
+    const zeroFirst = [
+      { date: "2026-07-01", totalAssets: 0 },
+      { date: "2026-07-10", totalAssets: 100 },
+    ];
+    expect(buildOverlay(zeroFirst, [{ label: "KOSPI", series: kospi }])).toEqual([]);
+  });
 });
