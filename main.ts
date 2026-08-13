@@ -11,7 +11,7 @@ import { computeState, type PortfolioState } from "./src/app/state";
 import { VaultRepository } from "./src/data/repository";
 import { replayTrades } from "./src/domain/replay";
 import { buildMonthlyReportMarkdown, computeMonthlyReport } from "./src/domain/report";
-import { PriceService } from "./src/price/service";
+import { PriceService, quoteTickers } from "./src/price/service";
 import { DEFAULT_DATA, type AssetSnapshot, type PersistedData } from "./src/settings";
 import { DashboardView, VIEW_TYPE_DASHBOARD } from "./src/ui/dashboardView";
 import { renderAllocation, renderHero, renderHoldings } from "./src/ui/render";
@@ -107,6 +107,11 @@ export default class StockManagerPlugin extends Plugin {
       callback: () => void this.createMacroMemo(),
     });
     this.addCommand({
+      id: "new-watch-note",
+      name: "워치 종목 추가",
+      callback: () => void this.createWatchNote(),
+    });
+    this.addCommand({
       id: "monthly-report",
       name: "월간 리포트 생성 (지난달)",
       callback: () => void this.createMonthlyReport(),
@@ -151,12 +156,7 @@ export default class StockManagerPlugin extends Plugin {
   async reload(withFetch = false): Promise<void> {
     const snapshot = this.repository.loadSnapshot();
     const replay = replayTrades(snapshot.trades);
-    const tickers = [
-      ...new Set([
-        ...replay.positions.map((p) => p.ticker),
-        ...snapshot.watches.map((w) => w.ticker),
-      ]),
-    ];
+    const tickers = quoteTickers(replay.positions, snapshot.watches);
     const cashCurrencies = Object.keys(replay.cash).filter((c) => c !== "KRW");
 
     const { quotes, fx } = withFetch
@@ -168,7 +168,8 @@ export default class StockManagerPlugin extends Plugin {
       quotes,
       fx,
       this.data.settings.rebalanceTolerance,
-      this.prices.lastUpdatedAt(tickers),
+      // 기준 시각은 valuation이 실제로 쓰는 보유 종목 시세만 반영 (워치 시세가 신선도를 가리지 않도록)
+      this.prices.lastUpdatedAt(replay.positions.map((p) => p.ticker)),
     );
 
     if (withFetch && this.data.settings.snapshotEnabled && this.state.tradeCount > 0) {
@@ -189,6 +190,15 @@ export default class StockManagerPlugin extends Plugin {
       this.openPath(file.path);
     } catch (e) {
       new Notice(`경제 메모 생성에 실패했습니다: ${String(e)}`);
+    }
+  }
+
+  private async createWatchNote(): Promise<void> {
+    try {
+      const file = await this.repository.createWatchNote();
+      this.openPath(file.path);
+    } catch (e) {
+      new Notice(`워치 노트 생성에 실패했습니다: ${String(e)}`);
     }
   }
 

@@ -106,6 +106,12 @@ currency: USD
 커맨드 "월간 리포트 생성 (지난달)" → `Reports/YYYY-MM 투자 리포트.md` 생성:
 자산 변화(스냅샷), 매매 횟수, 실현손익·배당(통화별), 순입출금, 회고 태그 성적표.
 
+### 작성 중인 노트 (`draft: true`)
+
+frontmatter에 `draft: true`를 넣으면 어떤 타입의 노트든 스캔에서 제외됩니다 —
+필수 필드를 채우기 전의 초안이 대시보드에 파싱 경고를 띄우지 않게 하는 장치.
+커맨드 "워치 종목 추가"가 만드는 템플릿이 이 방식을 사용합니다.
+
 ### CSV 가져오기 헤더
 
 `date, action`(필수)`, ticker, qty, price, currency, amount, tags`(세미콜론 구분)

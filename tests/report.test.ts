@@ -78,6 +78,43 @@ describe("computeMonthlyReport", () => {
   });
 });
 
+describe("computeMonthlyReport consistency", () => {
+  it("counts sells from recognized sell events so invalid sells do not inflate the count", () => {
+    const trades = [
+      t({ date: "2026-07-05", action: "sell", ticker: "GHOST", qty: 1, price: 10 }), // 보유 없음 → 무효
+    ];
+    const replay = replayTrades(trades);
+    const r = computeMonthlyReport({
+      trades,
+      sellEvents: replay.sellEvents,
+      snapshots: [],
+      month: "2026-07",
+    });
+    expect(r.tradeCounts.sell).toBe(0);
+  });
+
+  it("shows a zero net deposit as 0 instead of hiding it as no-activity", () => {
+    const trades = [
+      t({ date: "2026-07-01", action: "deposit", amount: 1_000_000 }),
+      t({ date: "2026-07-20", action: "withdraw", amount: 1_000_000 }),
+    ];
+    const md = buildMonthlyReportMarkdown(
+      computeMonthlyReport({ trades, sellEvents: [], snapshots: [], month: "2026-07" }),
+    );
+    expect(md).toContain("순입출금**: 0원");
+  });
+
+  it("escapes pipes in retro tags so the markdown table stays intact", () => {
+    const trades = [
+      t({ date: "2026-07-02", ticker: "A", qty: 1, price: 10, tags: ["a|b"] }),
+    ];
+    const md = buildMonthlyReportMarkdown(
+      computeMonthlyReport({ trades, sellEvents: [], snapshots: [], month: "2026-07" }),
+    );
+    expect(md).toContain("#a\\|b");
+  });
+});
+
 describe("replayTrades sell events", () => {
   it("emits one event per sell with pnl, currency and retro tags", () => {
     const { sellEvents } = replayTrades([

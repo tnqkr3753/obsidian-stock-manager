@@ -19,7 +19,9 @@ import { valuePortfolio } from "../domain/valuation";
 export interface WatchRow {
   ticker: string;
   name: string;
-  currency: string;
+  currency: string; // 노트가 선언한 통화 (목표가 기준)
+  priceCurrency: string; // 시세가 알려준 통화 (현재가 표기 기준)
+  currencyMismatch: boolean; // 둘이 다르면 목표가 비교 불가
   targetPrice?: number;
   price?: number;
   changePct?: number;
@@ -79,15 +81,22 @@ export function computeState(
 
   const watchRows: WatchRow[] = snapshot.watches.map((w) => {
     const quote = quotes[w.ticker];
+    // 목표가는 노트 통화, 시세는 quote 통화 — 다르면 비교 자체가 무의미하므로 배지를 켜지 않는다
+    const currencyMismatch = quote !== undefined && quote.currency !== w.currency;
     return {
       ticker: w.ticker,
       name: w.name,
       currency: w.currency,
+      priceCurrency: quote?.currency ?? w.currency,
+      currencyMismatch,
       targetPrice: w.targetPrice,
       price: quote?.price,
       changePct: quote?.changePct,
       targetHit:
-        w.targetPrice !== undefined && quote !== undefined && quote.price <= w.targetPrice,
+        w.targetPrice !== undefined &&
+        quote !== undefined &&
+        !currencyMismatch &&
+        quote.price <= w.targetPrice,
       path: w.path,
     };
   });

@@ -38,19 +38,12 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
 
   const lots = new Map<string, Lot>();
   const cash = new Map<string, number>();
-  const realized = new Map<string, RealizedEntry>();
+  const dividends = new Map<string, number>();
   const sellEvents: SellEvent[] = [];
   const warnings: string[] = [];
 
   const addCash = (currency: string, delta: number): void => {
     cash.set(currency, (cash.get(currency) ?? 0) + delta);
-  };
-  const addRealized = (ticker: string, pnl: number, dividend: number): void => {
-    const prev = realized.get(ticker) ?? { realizedPnl: 0, dividends: 0 };
-    realized.set(ticker, {
-      realizedPnl: prev.realizedPnl + pnl,
-      dividends: prev.dividends + dividend,
-    });
   };
   const where = (trade: Trade): string => trade.path ?? trade.date;
 
@@ -69,7 +62,7 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           break;
         }
         addCash(currency, trade.amount);
-        addRealized(trade.ticker, 0, trade.amount);
+        dividends.set(trade.ticker, (dividends.get(trade.ticker) ?? 0) + trade.amount);
         break;
       }
       case "opening":
@@ -104,7 +97,7 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
         }
         if (prev.currency !== currency) {
           warnings.push(
-            `통화 불일치(보유 ${prev.currency}, 기록 ${currency}) — 매도 대금을 보유 통화로 입금했습니다: ${trade.ticker} (${where(trade)})`,
+            `통화 불일치(보유 ${prev.currency}, 기록 ${currency}) — 가격을 보유 통화로 간주해 대금·손익을 계산했습니다: ${trade.ticker} (${where(trade)})`,
           );
         }
         const sellQty = Math.min(trade.qty, prev.qty);
@@ -113,8 +106,8 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
             `보유량(${prev.qty})보다 많은 수량(${trade.qty})을 매도해 ${sellQty}로 조정했습니다: ${trade.ticker} (${where(trade)})`,
           );
         }
+        // 실현손익의 유일한 기록처는 sellEvents — realized 원장은 아래에서 이벤트 합으로 파생된다
         const pnl = sellQty * (trade.price - prev.avgCost);
-        addRealized(trade.ticker, pnl, 0);
         addCash(prev.currency, sellQty * trade.price);
         sellEvents.push({
           date: trade.date,
@@ -130,10 +123,22 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
     }
   }
 
+  // realized 원장은 sellEvents 합 + 배당에서 파생 — 이중 기록으로 인한 불일치를 원천 차단
+  const pnlByTicker = new Map<string, number>();
+  for (const event of sellEvents) {
+    pnlByTicker.set(event.ticker, (pnlByTicker.get(event.ticker) ?? 0) + event.pnl);
+  }
+  const realized: Record<string, RealizedEntry> = Object.fromEntries(
+    [...new Set([...pnlByTicker.keys(), ...dividends.keys()])].map((ticker) => [
+      ticker,
+      { realizedPnl: pnlByTicker.get(ticker) ?? 0, dividends: dividends.get(ticker) ?? 0 },
+    ]),
+  );
+
   const positions: Position[] = [...lots.entries()]
     .filter(([, lot]) => lot.qty > EPSILON)
     .map(([ticker, lot]) => {
-      const ledger = realized.get(ticker) ?? { realizedPnl: 0, dividends: 0 };
+      const ledger = realized[ticker] ?? { realizedPnl: 0, dividends: 0 };
       return {
         ticker,
         qty: lot.qty,
@@ -148,7 +153,7 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
   return {
     positions,
     cash: Object.fromEntries(cash),
-    realized: Object.fromEntries(realized),
+    realized,
     sellEvents,
     warnings,
   };

@@ -143,6 +143,20 @@ describe("replayTrades", () => {
     expect(positions[0]!.currency).toBe("USD");
   });
 
+  it("keeps the realized ledger equal to the sum of sell events per ticker", () => {
+    const { realized, sellEvents } = replayTrades([
+      t({ ticker: "A", qty: 10, price: 100 }),
+      t({ date: "2026-01-02", action: "sell", ticker: "A", qty: 3, price: 120 }),
+      t({ date: "2026-01-03", action: "sell", ticker: "A", qty: 7, price: 90 }),
+      t({ date: "2026-02-01", action: "dividend", ticker: "A", amount: 500 }),
+    ]);
+    const eventSum = sellEvents
+      .filter((e) => e.ticker === "A")
+      .reduce((s, e) => s + e.pnl, 0);
+    expect(realized["A"]!.realizedPnl).toBe(eventSum);
+    expect(realized["A"]!.dividends).toBe(500);
+  });
+
   it("does not mutate the input array", () => {
     const input = [
       t({ date: "2026-01-02", ticker: "A", qty: 1, price: 1 }),

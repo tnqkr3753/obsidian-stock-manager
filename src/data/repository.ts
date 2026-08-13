@@ -44,6 +44,8 @@ export class VaultRepository {
       if (!this.isWatched(file.path)) continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm || typeof fm["type"] !== "string") continue;
+      // 작성 중인 노트는 draft: true로 표시하면 파싱 경고 없이 건너뛴다
+      if (fm["draft"] === true) continue;
 
       switch (fm["type"]) {
         case "trade": {
@@ -97,6 +99,27 @@ export class VaultRepository {
       "",
     ].join("\n");
     return this.app.vault.create(await this.availablePath(folder, `${date} 경제 메모`), content);
+  }
+
+  /** 워치 노트 초안을 만들고 경로를 반환한다. draft: true 동안은 스캔에서 제외된다. */
+  async createWatchNote(): Promise<TFile> {
+    const folder = normalizePath(`${this.getRootFolder()}/Watch`);
+    await this.ensureFolder(folder);
+    const content = [
+      "---",
+      "type: watch",
+      "draft: true",
+      'ticker: ""',
+      'name: ""',
+      "targetPrice: 0",
+      "currency: KRW",
+      "tags: []",
+      "---",
+      "",
+      "<!-- ticker·name·targetPrice를 채우고 draft 줄을 지우면 워치리스트에 나타납니다. -->",
+      "",
+    ].join("\n");
+    return this.app.vault.create(await this.availablePath(folder, "새 워치 종목"), content);
   }
 
   /** 월간 리포트 노트를 만들고 경로를 반환한다. */

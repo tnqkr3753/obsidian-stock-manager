@@ -4,6 +4,12 @@ import { fetchFxToKrw, fetchQuote, toYahooSymbol, type SymbolSource } from "./ya
 
 const CONCURRENCY = 4;
 
+/** 시세가 필요한 티커 집합 — fetch 경로와 캐시 경로가 반드시 같은 규칙을 쓰도록 단일화. */
+export const quoteTickers = (
+  positions: readonly Position[],
+  watches: readonly WatchItem[],
+): string[] => [...new Set([...positions.map((p) => p.ticker), ...watches.map((w) => w.ticker)])];
+
 async function mapWithLimit<T, R>(
   items: readonly T[],
   limit: number,
@@ -37,13 +43,19 @@ export class PriceService {
     extraCurrencies: readonly string[] = [], // 외화 현금 등 포지션 밖에서 필요한 환율
     watches: readonly WatchItem[] = [], // 워치리스트도 시세 조회 대상
   ): Promise<{ quotes: QuoteMap; fx: FxMap }> {
-    const symbolSources = new Map<string, SymbolSource | undefined>(
-      [
-        ...watches.map((w): [string, SymbolSource] => [w.ticker, w]),
-        ...positions.map((p): [string, SymbolSource | undefined] => [p.ticker, metas[p.ticker]]),
-      ],
-    );
-    const tickers = [...symbolSources.keys()];
+    // 심볼 해석 정보는 "정의된 소스 우선": 종목 메타 > 워치 노트 > undefined.
+    // 단순 Map 생성은 last-write-wins라 undefined가 워치의 market/yahooSymbol을 덮어쓸 수 있다.
+    const symbolSources = new Map<string, SymbolSource | undefined>();
+    const candidates: readonly [string, SymbolSource | undefined][] = [
+      ...positions.map((p): [string, SymbolSource | undefined] => [p.ticker, metas[p.ticker]]),
+      ...watches.map((w): [string, SymbolSource] => [w.ticker, w]),
+    ];
+    for (const [ticker, source] of candidates) {
+      if (!symbolSources.has(ticker) || (symbolSources.get(ticker) === undefined && source)) {
+        symbolSources.set(ticker, source);
+      }
+    }
+    const tickers = quoteTickers(positions, watches);
     const currencies = [
       ...new Set(
         [...positions.map((p) => p.currency), ...extraCurrencies].filter((c) => c !== "KRW"),

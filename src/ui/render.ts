@@ -236,18 +236,20 @@ export function renderWatchlist(
     const nameLine = mid.createDiv({ cls: "sm-nm" });
     nameLine.setText(row.name);
     if (row.targetHit) nameLine.createSpan({ cls: "sm-target-chip", text: "◎ 목표가 도달" });
-    mid.createDiv({
-      cls: "sm-sub",
-      text:
-        row.targetPrice !== undefined
-          ? `목표 ${formatNative(row.targetPrice, row.currency)}`
-          : "목표가 미설정",
-    });
+    const subParts = [
+      row.targetPrice !== undefined
+        ? `목표 ${formatNative(row.targetPrice, row.currency)}`
+        : "목표가 미설정",
+      ...(row.currencyMismatch
+        ? [`통화 확인 필요 (노트 ${row.currency} · 시세 ${row.priceCurrency})`]
+        : []),
+    ];
+    mid.createDiv({ cls: "sm-sub", text: subParts.join(" · ") });
 
     const right = item.createDiv({ cls: "sm-right" });
     right.createDiv({
       cls: "sm-val",
-      text: row.price !== undefined ? formatNative(row.price, row.currency) : "—",
+      text: row.price !== undefined ? formatNative(row.price, row.priceCurrency) : "—",
     });
     if (row.changePct !== undefined) {
       right.createDiv({

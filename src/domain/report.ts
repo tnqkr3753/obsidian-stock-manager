@@ -35,6 +35,9 @@ export function computeMonthlyReport(input: MonthlyReportInput): MonthlyReport {
     if (trade.action === "withdraw") netDeposits = addTo(netDeposits, trade.currency, -(trade.amount ?? 0));
     for (const tag of trade.tags ?? []) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
   }
+  // 매도 건수는 리플레이가 인정한 이벤트 기준 — 보유 없는 무효 매도 노트가 실현손익('—')과
+  // 모순되는 '매도 N회'로 집계되지 않도록 기록 건수 대신 이벤트 수를 쓴다
+  tradeCounts.sell = sells.length;
 
   let realizedPnl: Record<string, number> = {};
   const tagPnl = new Map<string, Record<string, number>>();
@@ -65,16 +68,20 @@ export function computeMonthlyReport(input: MonthlyReportInput): MonthlyReport {
   };
 }
 
+/**
+ * 통화별 금액 병기. 맵이 비어 있으면(해당 활동 없음) '—', 상쇄돼 0이면 '0원'으로 구분해 표기.
+ */
 const formatByCurrency = (map: Readonly<Record<string, number>>): string => {
-  const entries = Object.entries(map).filter(([, v]) => v !== 0);
+  const entries = Object.entries(map);
   if (entries.length === 0) return "—";
   return entries
     .map(([currency, value]) => {
-      const rounded = Math.round(value * 100) / 100;
-      const sign = rounded > 0 ? "+" : "";
+      const rounded = currency === "KRW" ? Math.round(value) : Math.round(value * 100) / 100;
+      const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+      const abs = Math.abs(rounded);
       return currency === "KRW"
-        ? `${sign}${Math.round(rounded).toLocaleString("ko-KR")}원`
-        : `${sign}${rounded.toLocaleString("en-US")} ${currency}`;
+        ? `${sign}${abs.toLocaleString("ko-KR")}원`
+        : `${sign}${abs.toLocaleString("en-US")} ${currency}`;
     })
     .join(" · ");
 };
@@ -98,7 +105,8 @@ export function buildMonthlyReportMarkdown(report: MonthlyReport): string {
   const tagLines =
     report.retroTags.length > 0
       ? report.retroTags.map(
-          (t) => `| #${t.tag} | ${t.count}회 | ${formatByCurrency(t.pnl)} |`,
+          // '|'가 든 태그가 테이블 열을 밀지 않도록 이스케이프
+          (t) => `| #${t.tag.replace(/\|/g, "\\|")} | ${t.count}회 | ${formatByCurrency(t.pnl)} |`,
         )
       : ["| — | — | — |"];
 
