@@ -218,6 +218,70 @@ export function renderTags(parent: HTMLElement, state: PortfolioState): void {
   });
 }
 
+export function renderWatchlist(
+  parent: HTMLElement,
+  state: PortfolioState,
+  openPath: OpenPath,
+): void {
+  if (state.watchRows.length === 0) return;
+  const el = card(parent);
+  cardHead(el, "워치리스트");
+
+  const list = el.createDiv({ cls: "sm-holding-list sm-num" });
+  for (const row of state.watchRows) {
+    const item = list.createDiv({ cls: "sm-holding" });
+    if (row.path) item.onClickEvent(() => openPath(row.path!));
+
+    const mid = item.createDiv({ cls: "sm-mid" });
+    const nameLine = mid.createDiv({ cls: "sm-nm" });
+    nameLine.setText(row.name);
+    if (row.targetHit) nameLine.createSpan({ cls: "sm-target-chip", text: "◎ 목표가 도달" });
+    mid.createDiv({
+      cls: "sm-sub",
+      text:
+        row.targetPrice !== undefined
+          ? `목표 ${formatNative(row.targetPrice, row.currency)}`
+          : "목표가 미설정",
+    });
+
+    const right = item.createDiv({ cls: "sm-right" });
+    right.createDiv({
+      cls: "sm-val",
+      text: row.price !== undefined ? formatNative(row.price, row.currency) : "—",
+    });
+    if (row.changePct !== undefined) {
+      right.createDiv({
+        cls: `sm-chg ${signClass(row.changePct)}`,
+        text: formatSignedPct(row.changePct),
+      });
+    }
+  }
+}
+
+export function renderMacros(
+  parent: HTMLElement,
+  state: PortfolioState,
+  openPath: OpenPath,
+): void {
+  if (state.recentMacros.length === 0) return;
+  const el = card(parent);
+  cardHead(el, "경제 메모");
+
+  const list = el.createDiv({ cls: "sm-journal sm-num" });
+  for (const memo of state.recentMacros) {
+    const row = list.createDiv({ cls: "sm-jrow" });
+    if (memo.path) row.onClickEvent(() => openPath(memo.path!));
+    row.createSpan({ cls: "sm-jdate", text: memo.date.slice(5).replace("-", ".") });
+
+    const body = row.createDiv({ cls: "sm-jbody" });
+    body.createDiv({ cls: "sm-jline" }).createSpan({ cls: "sm-jnm", text: memo.title });
+    if (memo.tags.length > 0) {
+      const tags = body.createDiv({ cls: "sm-jtags" });
+      memo.tags.forEach((t) => tags.createSpan({ cls: "sm-jtag", text: `#${t}` }));
+    }
+  }
+}
+
 export function renderJournal(
   parent: HTMLElement,
   state: PortfolioState,

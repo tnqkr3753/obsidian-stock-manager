@@ -4,6 +4,7 @@ import { replayTrades } from "../domain/replay";
 import { computeTagExposure } from "../domain/tags";
 import type {
   FxMap,
+  MacroMemo,
   PortfolioConfig,
   QuoteMap,
   RebalanceResult,
@@ -14,11 +15,25 @@ import type {
 } from "../domain/types";
 import { valuePortfolio } from "../domain/valuation";
 
+/** 워치리스트 한 행 — 시세가 붙고 목표가 도달 여부가 계산된 상태. */
+export interface WatchRow {
+  ticker: string;
+  name: string;
+  currency: string;
+  targetPrice?: number;
+  price?: number;
+  changePct?: number;
+  targetHit: boolean;
+  path?: string;
+}
+
 export interface PortfolioState {
   valuation: Valuation;
   tagExposure: readonly TagExposure[];
   rebalance: RebalanceResult;
   recentTrades: readonly Trade[];
+  recentMacros: readonly MacroMemo[];
+  watchRows: readonly WatchRow[];
   todayPnl: number; // 당일 등락 기반 오늘 손익 (KRW)
   config: PortfolioConfig;
   metas: Readonly<Record<string, StockMeta>>;
@@ -28,6 +43,7 @@ export interface PortfolioState {
 }
 
 const RECENT_TRADES = 5;
+const RECENT_MACROS = 3;
 
 /** vault 스냅샷 + 시세 + 환율 → 화면이 쓰는 모든 파생 상태. 순수 함수라 어느 뷰에서든 재사용된다. */
 export function computeState(
@@ -57,6 +73,25 @@ export function computeState(
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, RECENT_TRADES);
 
+  const recentMacros = [...snapshot.macros]
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, RECENT_MACROS);
+
+  const watchRows: WatchRow[] = snapshot.watches.map((w) => {
+    const quote = quotes[w.ticker];
+    return {
+      ticker: w.ticker,
+      name: w.name,
+      currency: w.currency,
+      targetPrice: w.targetPrice,
+      price: quote?.price,
+      changePct: quote?.changePct,
+      targetHit:
+        w.targetPrice !== undefined && quote !== undefined && quote.price <= w.targetPrice,
+      path: w.path,
+    };
+  });
+
   return {
     valuation,
     tagExposure: computeTagExposure({
@@ -72,6 +107,8 @@ export function computeState(
       tolerance: tolerancePct / 100,
     }),
     recentTrades,
+    recentMacros,
+    watchRows,
     todayPnl,
     config: snapshot.config,
     metas: snapshot.metas,

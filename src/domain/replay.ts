@@ -1,4 +1,4 @@
-import type { Position, RealizedEntry, ReplayResult, Trade } from "./types";
+import type { Position, RealizedEntry, ReplayResult, SellEvent, Trade } from "./types";
 
 interface Lot {
   qty: number;
@@ -39,6 +39,7 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
   const lots = new Map<string, Lot>();
   const cash = new Map<string, number>();
   const realized = new Map<string, RealizedEntry>();
+  const sellEvents: SellEvent[] = [];
   const warnings: string[] = [];
 
   const addCash = (currency: string, delta: number): void => {
@@ -112,8 +113,17 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
             `보유량(${prev.qty})보다 많은 수량(${trade.qty})을 매도해 ${sellQty}로 조정했습니다: ${trade.ticker} (${where(trade)})`,
           );
         }
-        addRealized(trade.ticker, sellQty * (trade.price - prev.avgCost), 0);
+        const pnl = sellQty * (trade.price - prev.avgCost);
+        addRealized(trade.ticker, pnl, 0);
         addCash(prev.currency, sellQty * trade.price);
+        sellEvents.push({
+          date: trade.date,
+          ticker: trade.ticker,
+          qty: sellQty,
+          pnl,
+          currency: prev.currency,
+          tags: trade.tags ?? [],
+        });
         lots.set(trade.ticker, { ...prev, qty: prev.qty - sellQty });
         break;
       }
@@ -139,6 +149,7 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
     positions,
     cash: Object.fromEntries(cash),
     realized: Object.fromEntries(realized),
+    sellEvents,
     warnings,
   };
 }

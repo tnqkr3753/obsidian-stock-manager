@@ -1,6 +1,6 @@
-import type { FxMap, Position, Quote, QuoteMap, StockMeta } from "../domain/types";
+import type { FxMap, Position, Quote, QuoteMap, StockMeta, WatchItem } from "../domain/types";
 import type { PersistedData } from "../settings";
-import { fetchFxToKrw, fetchQuote, toYahooSymbol } from "./yahoo";
+import { fetchFxToKrw, fetchQuote, toYahooSymbol, type SymbolSource } from "./yahoo";
 
 const CONCURRENCY = 4;
 
@@ -35,8 +35,15 @@ export class PriceService {
     positions: readonly Position[],
     metas: Readonly<Record<string, StockMeta>>,
     extraCurrencies: readonly string[] = [], // 외화 현금 등 포지션 밖에서 필요한 환율
+    watches: readonly WatchItem[] = [], // 워치리스트도 시세 조회 대상
   ): Promise<{ quotes: QuoteMap; fx: FxMap }> {
-    const tickers = positions.map((p) => p.ticker);
+    const symbolSources = new Map<string, SymbolSource | undefined>(
+      [
+        ...watches.map((w): [string, SymbolSource] => [w.ticker, w]),
+        ...positions.map((p): [string, SymbolSource | undefined] => [p.ticker, metas[p.ticker]]),
+      ],
+    );
+    const tickers = [...symbolSources.keys()];
     const currencies = [
       ...new Set(
         [...positions.map((p) => p.currency), ...extraCurrencies].filter((c) => c !== "KRW"),
@@ -45,7 +52,7 @@ export class PriceService {
 
     const quoteResults = await mapWithLimit(tickers, CONCURRENCY, async (ticker) => ({
       ticker,
-      quote: await fetchQuote(toYahooSymbol(ticker, metas[ticker])),
+      quote: await fetchQuote(toYahooSymbol(ticker, symbolSources.get(ticker))),
     }));
     const fxResults = await mapWithLimit(currencies, CONCURRENCY, async (currency) => ({
       currency,

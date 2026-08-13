@@ -249,6 +249,18 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
   padding: 0 6px;
 }
 
+/* ── 워치리스트 ───────────────────────── */
+.sm-target-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--sm-accent-soft);
+  color: var(--sm-accent);
+  font-size: 0.72em;
+  font-weight: 800;
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
 /* ── 경고 카드 ────────────────────────── */
 .sm-warnings ul { margin: 0; padding-left: 16px; font-size: 0.78em; color: var(--sm-warn-ink); }
 

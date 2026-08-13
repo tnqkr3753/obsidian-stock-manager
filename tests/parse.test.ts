@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseConfig, parseStockMeta, parseTrade } from "../src/data/parse";
+import { parseConfig, parseMacro, parseStockMeta, parseTrade, parseWatch } from "../src/data/parse";
 
 describe("parseTrade", () => {
   it("parses a valid buy frontmatter into a Trade", () => {
@@ -87,6 +87,45 @@ describe("parseStockMeta", () => {
 
   it("rejects a stock note without ticker", () => {
     expect(parseStockMeta({ type: "stock", name: "이름만" }, "s.md").ok).toBe(false);
+  });
+});
+
+describe("parseMacro", () => {
+  it("parses a macro memo note with tags", () => {
+    const r = parseMacro(
+      { type: "macro", date: "2026-08-10", tags: ["#금리", "반도체사이클"] },
+      "Stocks/Macro/2026-08-10 FOMC.md",
+    );
+    expect(r.ok && r.value).toMatchObject({
+      date: "2026-08-10",
+      title: "2026-08-10 FOMC",
+      tags: ["금리", "반도체사이클"],
+    });
+  });
+
+  it("rejects a macro note without a date", () => {
+    expect(parseMacro({ type: "macro" }, "m.md").ok).toBe(false);
+  });
+});
+
+describe("parseWatch", () => {
+  it("parses a watch note with target price", () => {
+    const r = parseWatch(
+      { type: "watch", ticker: "TSLA", name: "테슬라", targetPrice: 180, currency: "usd" },
+      "w.md",
+    );
+    expect(r.ok && r.value).toMatchObject({
+      ticker: "TSLA",
+      name: "테슬라",
+      targetPrice: 180,
+      currency: "USD",
+    });
+  });
+
+  it("defaults the name to the ticker and rejects missing ticker", () => {
+    const r = parseWatch({ type: "watch", ticker: "005930" }, "w.md");
+    expect(r.ok && r.value.name).toBe("005930");
+    expect(parseWatch({ type: "watch" }, "w.md").ok).toBe(false);
   });
 });
 

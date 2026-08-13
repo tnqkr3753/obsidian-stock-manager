@@ -6,9 +6,11 @@ import {
   renderHero,
   renderHoldings,
   renderJournal,
+  renderMacros,
   renderTags,
   renderTrend,
   renderWarnings,
+  renderWatchlist,
 } from "./render";
 
 export const VIEW_TYPE_DASHBOARD = "stock-manager-dashboard";
@@ -69,7 +71,9 @@ export class DashboardView extends ItemView {
       renderAllocation(root, state);
       renderHoldings(root, state, openPath);
       renderTags(root, state);
+      renderWatchlist(root, state, openPath);
       renderJournal(root, state, openPath);
+      renderMacros(root, state, openPath);
       renderWarnings(root, state);
     }
 

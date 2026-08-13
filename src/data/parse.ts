@@ -1,10 +1,12 @@
 import type {
   HoldingClass,
+  MacroMemo,
   PortfolioConfig,
   Result,
   StockMeta,
   Trade,
   TradeAction,
+  WatchItem,
 } from "../domain/types";
 import { err, ok, TRADE_ACTIONS } from "../domain/types";
 import { toLocalDateString } from "../util/date";
@@ -95,6 +97,39 @@ export function parseStockMeta(fm: Frontmatter, path: string): Result<StockMeta>
     ticker,
     name: asString(fm["name"]) ?? ticker,
     assetClass,
+    currency: (asString(fm["currency"]) ?? "KRW").toUpperCase(),
+    tags: asTags(fm["tags"]),
+    market: asString(fm["market"]),
+    yahooSymbol: asString(fm["yahooSymbol"]),
+    path,
+  });
+}
+
+export function parseMacro(fm: Frontmatter, path: string): Result<MacroMemo> {
+  if (fm["type"] !== "macro") return err(`type이 macro가 아닙니다: ${path}`);
+
+  const date = asDateString(fm["date"]);
+  if (!date) return err(`경제 메모에 date가 없습니다: ${path}`);
+
+  const basename = path.split("/").pop()?.replace(/\.md$/, "") ?? path;
+  return ok({
+    date,
+    title: asString(fm["title"]) ?? basename,
+    tags: asTags(fm["tags"]),
+    path,
+  });
+}
+
+export function parseWatch(fm: Frontmatter, path: string): Result<WatchItem> {
+  if (fm["type"] !== "watch") return err(`type이 watch가 아닙니다: ${path}`);
+
+  const ticker = asString(fm["ticker"]);
+  if (!ticker) return err(`워치 노트에 ticker가 없습니다: ${path}`);
+
+  return ok({
+    ticker,
+    name: asString(fm["name"]) ?? ticker,
+    targetPrice: asNumber(fm["targetPrice"]),
     currency: (asString(fm["currency"]) ?? "KRW").toUpperCase(),
     tags: asTags(fm["tags"]),
     market: asString(fm["market"]),

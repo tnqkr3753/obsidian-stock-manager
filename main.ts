@@ -10,6 +10,7 @@ import {
 import { computeState, type PortfolioState } from "./src/app/state";
 import { VaultRepository } from "./src/data/repository";
 import { replayTrades } from "./src/domain/replay";
+import { buildMonthlyReportMarkdown, computeMonthlyReport } from "./src/domain/report";
 import { PriceService } from "./src/price/service";
 import { DEFAULT_DATA, type AssetSnapshot, type PersistedData } from "./src/settings";
 import { DashboardView, VIEW_TYPE_DASHBOARD } from "./src/ui/dashboardView";
@@ -100,6 +101,16 @@ export default class StockManagerPlugin extends Plugin {
       name: "시세 새로고침",
       callback: () => void this.refreshQuotes(),
     });
+    this.addCommand({
+      id: "new-macro-memo",
+      name: "경제 메모 작성",
+      callback: () => void this.createMacroMemo(),
+    });
+    this.addCommand({
+      id: "monthly-report",
+      name: "월간 리포트 생성 (지난달)",
+      callback: () => void this.createMonthlyReport(),
+    });
 
     this.registerMarkdownCodeBlockProcessor("stock-portfolio", (_source, el, ctx) => {
       ctx.addChild(new PortfolioEmbed(el, this));
@@ -140,11 +151,16 @@ export default class StockManagerPlugin extends Plugin {
   async reload(withFetch = false): Promise<void> {
     const snapshot = this.repository.loadSnapshot();
     const replay = replayTrades(snapshot.trades);
-    const tickers = replay.positions.map((p) => p.ticker);
+    const tickers = [
+      ...new Set([
+        ...replay.positions.map((p) => p.ticker),
+        ...snapshot.watches.map((w) => w.ticker),
+      ]),
+    ];
     const cashCurrencies = Object.keys(replay.cash).filter((c) => c !== "KRW");
 
     const { quotes, fx } = withFetch
-      ? await this.prices.refresh(replay.positions, snapshot.metas, cashCurrencies)
+      ? await this.prices.refresh(replay.positions, snapshot.metas, cashCurrencies, snapshot.watches)
       : this.prices.fromCache(tickers);
 
     this.state = computeState(
@@ -165,6 +181,42 @@ export default class StockManagerPlugin extends Plugin {
     new Notice("시세를 갱신하는 중…");
     await this.reload(true);
     new Notice("시세 갱신 완료");
+  }
+
+  private async createMacroMemo(): Promise<void> {
+    try {
+      const file = await this.repository.createMacroNote(toLocalDateString());
+      this.openPath(file.path);
+    } catch (e) {
+      new Notice(`경제 메모 생성에 실패했습니다: ${String(e)}`);
+    }
+  }
+
+  /** 지난달 매매·손익·자산 변화를 집계한 리포트 노트를 생성하고 연다. */
+  private async createMonthlyReport(): Promise<void> {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const month = toLocalDateString(prev).slice(0, 7);
+
+    const snapshot = this.repository.loadSnapshot();
+    const replay = replayTrades(snapshot.trades);
+    const report = computeMonthlyReport({
+      trades: snapshot.trades,
+      sellEvents: replay.sellEvents,
+      snapshots: this.data.snapshots,
+      month,
+    });
+
+    try {
+      const file = await this.repository.createReportNote(
+        month,
+        buildMonthlyReportMarkdown(report),
+      );
+      new Notice(`${month} 리포트를 만들었어요.`);
+      this.openPath(file.path);
+    } catch (e) {
+      new Notice(`리포트 생성에 실패했습니다: ${String(e)}`);
+    }
   }
 
   private async recordSnapshot(totalAssets: number): Promise<void> {

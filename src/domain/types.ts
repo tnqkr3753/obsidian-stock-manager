@@ -59,10 +59,21 @@ export interface RealizedEntry {
   dividends: number;
 }
 
+/** 매도 1건의 실현 기록 — 월간 리포트의 기간 귀속·회고 태그 성적표에 쓰인다. */
+export interface SellEvent {
+  date: string;
+  ticker: string;
+  qty: number;
+  pnl: number; // 종목 통화
+  currency: string;
+  tags: readonly string[];
+}
+
 export interface ReplayResult {
   positions: readonly Position[];
   cash: Readonly<Record<string, number>>; // 통화별 현금
   realized: Readonly<Record<string, RealizedEntry>>; // 청산분 포함 종목별 누계
+  sellEvents: readonly SellEvent[];
   warnings: readonly string[];
 }
 
@@ -133,6 +144,43 @@ export interface RebalanceResult {
   entries: readonly RebalanceEntry[];
   needsRebalancing: boolean;
   headline?: RebalanceEntry; // 가장 크게 초과보유된 자산군
+}
+
+/** 경제 메모 노트 (2차). 태그로 종목 태그와 연결된다. */
+export interface MacroMemo {
+  date: string;
+  title: string;
+  tags: readonly string[];
+  path?: string;
+}
+
+/** 워치리스트 노트 (2차). targetPrice 도달 시 대시보드에 배지. */
+export interface WatchItem {
+  ticker: string;
+  name: string;
+  targetPrice?: number; // 종목 통화
+  currency: string;
+  tags: readonly string[];
+  market?: string;
+  yahooSymbol?: string;
+  path?: string;
+}
+
+export interface RetroTagStat {
+  tag: string;
+  count: number; // 해당 월 태그 사용 횟수 (모든 액션)
+  pnl: Readonly<Record<string, number>>; // 통화별 실현손익 (매도 이벤트 기준)
+}
+
+export interface MonthlyReport {
+  month: string; // YYYY-MM
+  tradeCounts: { buy: number; sell: number; dividend: number; deposit: number; withdraw: number };
+  realizedPnl: Readonly<Record<string, number>>; // 통화별
+  dividends: Readonly<Record<string, number>>;
+  netDeposits: Readonly<Record<string, number>>; // 입금 - 출금
+  startAssets?: number; // 월 내 첫/마지막 스냅샷 (KRW)
+  endAssets?: number;
+  retroTags: readonly RetroTagStat[];
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };

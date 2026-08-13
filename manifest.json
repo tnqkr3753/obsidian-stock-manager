@@ -1,7 +1,7 @@
 {
   "id": "stock-manager",
   "name": "Stock Manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
   "description": "매매일지 기반 주식 포트폴리오 매니저 — 보유 현황·자산 배분·태그 노출·리밸런싱을 토스 스타일 대시보드로 보여줍니다.",
   "author": "passionkdy",

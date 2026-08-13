@@ -1,11 +1,13 @@
 import type { App, TFile } from "obsidian";
 import { normalizePath } from "obsidian";
-import type { PortfolioConfig, StockMeta, Trade } from "../domain/types";
-import { parseConfig, parseStockMeta, parseTrade } from "./parse";
+import type { MacroMemo, PortfolioConfig, StockMeta, Trade, WatchItem } from "../domain/types";
+import { parseConfig, parseMacro, parseStockMeta, parseTrade, parseWatch } from "./parse";
 
 export interface VaultSnapshot {
   trades: readonly Trade[];
   metas: Readonly<Record<string, StockMeta>>;
+  macros: readonly MacroMemo[];
+  watches: readonly WatchItem[];
   config: PortfolioConfig;
   errors: readonly string[];
 }
@@ -33,6 +35,8 @@ export class VaultRepository {
   loadSnapshot(): VaultSnapshot {
     const trades: Trade[] = [];
     const metas: Record<string, StockMeta> = {};
+    const macros: MacroMemo[] = [];
+    const watches: WatchItem[] = [];
     const errors: string[] = [];
     let config = FALLBACK_CONFIG;
 
@@ -60,14 +64,46 @@ export class VaultRepository {
           else errors.push(r.error);
           break;
         }
-        // 2차 예정 타입은 지금은 수집만 하지 않고 통과시킨다.
-        case "macro":
-        case "watch":
+        case "macro": {
+          const r = parseMacro(fm, file.path);
+          if (r.ok) macros.push(r.value);
+          else errors.push(r.error);
           break;
+        }
+        case "watch": {
+          const r = parseWatch(fm, file.path);
+          if (r.ok) watches.push(r.value);
+          else errors.push(r.error);
+          break;
+        }
       }
     }
 
-    return { trades, metas, config, errors };
+    return { trades, metas, macros, watches, config, errors };
+  }
+
+  /** 오늘 날짜의 경제 메모 노트를 만들고 경로를 반환한다. 이미 있으면 번호를 붙인다. */
+  async createMacroNote(date: string): Promise<TFile> {
+    const folder = normalizePath(`${this.getRootFolder()}/Macro`);
+    await this.ensureFolder(folder);
+    const content = [
+      "---",
+      "type: macro",
+      `date: ${date}`,
+      "tags: []",
+      "---",
+      "",
+      "<!-- 금리·환율·실적 등 시장 메모. tags에 종목 태그와 같은 태그를 쓰면 서로 연결됩니다. -->",
+      "",
+    ].join("\n");
+    return this.app.vault.create(await this.availablePath(folder, `${date} 경제 메모`), content);
+  }
+
+  /** 월간 리포트 노트를 만들고 경로를 반환한다. */
+  async createReportNote(month: string, markdown: string): Promise<TFile> {
+    const folder = normalizePath(`${this.getRootFolder()}/Reports`);
+    await this.ensureFolder(folder);
+    return this.app.vault.create(await this.availablePath(folder, `${month} 투자 리포트`), markdown);
   }
 
   async createTradeNote(trade: Trade, memo: string): Promise<TFile> {

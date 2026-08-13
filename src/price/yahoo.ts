@@ -1,11 +1,17 @@
 import { requestUrl } from "obsidian";
-import type { Quote, StockMeta } from "../domain/types";
+import type { Quote } from "../domain/types";
+
+/** 심볼 해석에 필요한 최소 정보 — StockMeta와 WatchItem 둘 다 만족한다. */
+export interface SymbolSource {
+  market?: string;
+  yahooSymbol?: string;
+}
 
 /**
  * Yahoo Finance 심볼 규칙: 국내 6자리 코드는 .KS(코스피)/.KQ(코스닥) 접미사가 필요하다.
  * 종목 노트의 yahooSymbol이 있으면 그대로 쓰고, 없으면 market으로 추정한다.
  */
-export function toYahooSymbol(ticker: string, meta?: StockMeta): string {
+export function toYahooSymbol(ticker: string, meta?: SymbolSource): string {
   if (meta?.yahooSymbol) return meta.yahooSymbol;
   if (/^\d{6}$/.test(ticker)) {
     return meta?.market?.toUpperCase() === "KOSDAQ" ? `${ticker}.KQ` : `${ticker}.KS`;
