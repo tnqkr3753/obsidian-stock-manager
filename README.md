@@ -4,8 +4,6 @@
 보유량·평단·수익률·실현손익·배당·현금이 전부 매매일지 노트에서 파생되고,
 토스 스타일 대시보드와 HTS식 상세 테이블로 보여준다.
 
-UI 시안: https://claude.ai/code/artifact/184ee5fe-5c1a-47c9-8a44-c589c8baf4f4
-
 ## 기능 (1차 MVP)
 
 - 매매일지 노트(frontmatter) 기반 보유 현황 파생 — 기초 보유는 `opening` 액션
