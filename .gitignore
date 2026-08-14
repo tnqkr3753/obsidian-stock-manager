@@ -2,3 +2,4 @@ node_modules/
 main.js
 coverage/
 .DS_Store
+*_work_log_*.json
