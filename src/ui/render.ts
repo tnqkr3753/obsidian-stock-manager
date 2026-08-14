@@ -437,7 +437,7 @@ export function renderJournal(
     const body = row.createDiv({ cls: "sm-jbody" });
     const line = body.createDiv({ cls: "sm-jline" });
     line.createSpan({ cls: `sm-act sm-act-${trade.action}`, text: ACTION_LABEL[trade.action] ?? trade.action });
-    const name = trade.ticker ? (state.metas[trade.ticker]?.name ?? trade.ticker) : "현금";
+    const name = trade.ticker ? (state.names[trade.ticker] ?? trade.ticker) : "현금";
     line.createSpan({ cls: "sm-jnm", text: name });
 
     const detail =

@@ -47,7 +47,8 @@ export function valuePortfolio(input: ValuationInput): Valuation {
     return {
       ticker: pos.ticker,
       account: pos.account,
-      name: meta?.name ?? pos.ticker,
+      // 종목 노트가 없으면 시세가 알려준 이름으로 — 티커(005930)가 그대로 보이지 않게
+      name: meta?.name ?? quote?.name ?? pos.ticker,
       assetClass: meta?.assetClass ?? "stock",
       currency: pos.currency,
       qty: pos.qty,

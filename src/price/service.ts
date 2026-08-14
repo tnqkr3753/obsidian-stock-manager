@@ -95,6 +95,7 @@ export class PriceService {
               currency: quote!.currency,
               changePct: quote!.changePct,
               asOf: quote!.asOf ?? Date.now(),
+              name: quote!.name,
             },
           ]),
       ),

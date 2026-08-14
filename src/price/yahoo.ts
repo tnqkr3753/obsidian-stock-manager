@@ -29,6 +29,8 @@ interface YahooChartResponse {
         previousClose?: number;
         currency?: string;
         regularMarketTime?: number;
+        shortName?: string;
+        longName?: string;
       };
     }>;
   };
@@ -50,6 +52,7 @@ async function fetchChartMeta(symbol: string): Promise<Quote | undefined> {
     currency: (meta?.currency ?? "KRW").toUpperCase(),
     changePct: typeof prev === "number" && prev > 0 ? (price - prev) / prev : undefined,
     asOf: (meta?.regularMarketTime ?? Math.floor(Date.now() / 1000)) * 1000,
+    name: meta?.longName ?? meta?.shortName,
   };
 }
 

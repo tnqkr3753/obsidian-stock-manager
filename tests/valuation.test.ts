@@ -90,6 +90,17 @@ describe("valuePortfolio", () => {
     expect([...v.missingFx].sort()).toEqual(["EUR", "USD"]);
   });
 
+  it("falls back to the quote-provided name when there is no stock note", () => {
+    const v = valuePortfolio({
+      positions: [pos({ ticker: "005930" })],
+      cash: {},
+      metas: {},
+      quotes: { "005930": { price: 100, currency: "KRW", name: "삼성전자" } },
+      fx: {},
+    });
+    expect(v.rows[0]!.name).toBe("삼성전자");
+  });
+
   it("computes allocation across stock, bond and cash", () => {
     const v = valuePortfolio({
       positions: [

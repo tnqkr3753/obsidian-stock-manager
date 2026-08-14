@@ -92,6 +92,7 @@ export interface Quote {
   currency: string;
   changePct?: number; // 당일 등락 (0.008 = +0.8%)
   asOf?: number; // epoch ms
+  name?: string; // 야후가 알려준 종목명 — 종목 노트가 없을 때 표시 이름으로 사용
 }
 
 export type QuoteMap = Readonly<Record<string, Quote>>;

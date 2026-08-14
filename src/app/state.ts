@@ -43,6 +43,7 @@ export interface PortfolioState {
   upcoming: readonly UpcomingEvent[]; // 다가오는 이벤트 (30일)
   cashflow: Cashflow; // 최근 6개월 입출금 + 누적 투입 원금
   accounts: readonly AccountBreakdown[]; // 계좌별 자산 (ISA·신한 ...)
+  names: Readonly<Record<string, string>>; // ticker → 표시 이름 (종목 노트 > 시세 응답)
   todayPnl: number; // 당일 등락 기반 오늘 손익 (KRW)
   config: PortfolioConfig;
   metas: Readonly<Record<string, StockMeta>>;
@@ -111,6 +112,13 @@ export function computeState(
     };
   });
 
+  const names: Record<string, string> = {
+    ...Object.fromEntries(
+      Object.entries(quotes).flatMap(([ticker, quote]) => (quote.name ? [[ticker, quote.name]] : [])),
+    ),
+    ...Object.fromEntries(Object.values(snapshot.metas).map((m) => [m.ticker, m.name])),
+  };
+
   const allEvents = [
     ...Object.values(snapshot.metas).flatMap((m) => m.events),
     ...snapshot.watches.flatMap((w) => w.events),
@@ -125,6 +133,7 @@ export function computeState(
       cashByAccount: replay.cashByAccount,
       fx,
     }),
+    names,
     valuation,
     tagExposure: computeTagExposure({
       rows: valuation.rows,
