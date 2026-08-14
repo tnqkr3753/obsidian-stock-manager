@@ -12,6 +12,10 @@ export interface VaultSnapshot {
   errors: readonly string[];
 }
 
+/** YAML 큰따옴표 스칼라 이스케이프 — 따옴표·역슬래시·줄바꿈이 노트를 깨지 않게. */
+const yamlString = (s: string): string =>
+  `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\r\n]+/g, " ")}"`;
+
 const FALLBACK_CONFIG: PortfolioConfig = {
   target: { stock: 0.6, bond: 0.2, cash: 0.2 },
   concentrationLimit: 0.4,
@@ -102,6 +106,35 @@ export class VaultRepository {
     return this.app.vault.create(await this.availablePath(folder, `${date} 경제 메모`), content);
   }
 
+  /** 검색으로 고른 미등록 종목의 메타 노트를 자동 생성한다 (태그는 사용자가 추후 추가). */
+  async createStockNote(hit: {
+    ticker: string;
+    name: string;
+    market?: string;
+    currency?: string;
+    yahooSymbol?: string;
+  }): Promise<TFile> {
+    const folder = normalizePath(`${this.getRootFolder()}/Stocks`);
+    await this.ensureFolder(folder);
+    const content = [
+      "---",
+      "type: stock",
+      `ticker: ${yamlString(hit.ticker)}`,
+      `name: ${yamlString(hit.name)}`,
+      ...(hit.market ? [`market: ${yamlString(hit.market)}`] : []),
+      `currency: ${hit.currency ?? "KRW"}`,
+      ...(hit.yahooSymbol && hit.yahooSymbol !== hit.ticker
+        ? [`yahooSymbol: ${yamlString(hit.yahooSymbol)}`]
+        : []),
+      "tags: []",
+      "---",
+      "",
+      "<!-- 종목 검색으로 자동 생성됨. tags에 태그를 달면 태그 노출 분석에 반영됩니다. -->",
+      "",
+    ].join("\n");
+    return this.app.vault.create(await this.availablePath(folder, hit.name), content);
+  }
+
   /** 워치 노트 초안을 만들고 경로를 반환한다. draft: true 동안은 스캔에서 제외된다. */
   async createWatchNote(): Promise<TFile> {
     const folder = normalizePath(`${this.getRootFolder()}/Watch`);
@@ -133,10 +166,6 @@ export class VaultRepository {
   async createTradeNote(trade: Trade, memo: string): Promise<TFile> {
     const folder = normalizePath(this.getTradesFolder());
     await this.ensureFolder(folder);
-
-    // 따옴표·역슬래시·줄바꿈이 그대로 들어가면 YAML이 깨져 노트가 조용히 무시된다
-    const yamlString = (s: string): string =>
-      `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\r\n]+/g, " ")}"`;
 
     const lines = [
       "---",

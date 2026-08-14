@@ -362,6 +362,10 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
 .sm-muted { color: var(--sm-ink-3); }
 .sm-htable tfoot td { border-bottom: none; border-top: 2px solid var(--sm-line); font-weight: 800; }
 
+/* ── 종목 검색 자동완성 ───────────────── */
+.sm-ticker-suggestion .sm-nm { font-size: 0.9em; font-weight: 600; }
+.sm-ticker-suggestion .sm-sub { font-size: 0.78em; color: var(--text-faint); }
+
 /* ── 코드블록 임베드 / 모달 ───────────── */
 .sm-embed { border-radius: 16px; }
 .sm-modal .sm-csv-area { width: 100%; font-family: var(--font-monospace); font-size: 0.82em; }

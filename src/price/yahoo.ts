@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import type { Quote } from "../domain/types";
+import { mapSearchQuote, type RawSearchQuote, type SymbolSearchHit } from "./symbolSearch";
 
 /** 심볼 해석에 필요한 최소 정보 — StockMeta와 WatchItem 둘 다 만족한다. */
 export interface SymbolSource {
@@ -101,6 +102,19 @@ export async function fetchSeries(
     return points.length > 0 ? points : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** 회사명·심볼로 종목 검색 (한글 지원). 매매 입력 자동완성용. */
+export async function searchSymbols(query: string): Promise<SymbolSearchHit[]> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`;
+    const res = await requestUrl({ url, throw: false });
+    if (res.status !== 200) return [];
+    const quotes = ((res.json as { quotes?: RawSearchQuote[] }).quotes ?? []);
+    return quotes.map(mapSearchQuote).filter((h): h is SymbolSearchHit => h !== null);
+  } catch {
+    return [];
   }
 }
 

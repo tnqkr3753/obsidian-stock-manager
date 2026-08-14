@@ -2,7 +2,9 @@ import { Modal, Notice, Setting } from "obsidian";
 import type StockManagerPlugin from "../../main";
 import { parseTrade } from "../data/parse";
 import type { TradeAction } from "../domain/types";
+import type { SymbolSearchHit } from "../price/symbolSearch";
 import { toLocalDateString } from "../util/date";
+import { TickerSuggest } from "./tickerSuggest";
 
 const ACTION_OPTIONS: Record<TradeAction, string> = {
   buy: "매수",
@@ -29,6 +31,7 @@ export class TradeModal extends Modal {
   private tags = "";
   private memo = "";
   private checks: boolean[] = [];
+  private pickedHit: SymbolSearchHit | null = null; // 검색으로 고른 종목 (미등록이면 노트 자동 생성)
 
   constructor(private readonly plugin: StockManagerPlugin) {
     super(plugin.app);
@@ -58,9 +61,19 @@ export class TradeModal extends Modal {
 
     if (needsTicker(this.action)) {
       new Setting(contentEl)
-        .setName("종목 코드")
-        .setDesc("예: 005930, AAPL — 종목 노트의 ticker와 일치해야 합니다")
-        .addText((t) => t.setValue(this.ticker).onChange((v) => (this.ticker = v.trim())));
+        .setName("종목")
+        .setDesc("회사명이나 코드로 검색하세요 — 예: 삼성전자, AAPL")
+        .addText((t) => {
+          t.setPlaceholder("삼성전자").setValue(this.ticker).onChange((v) => (this.ticker = v.trim()));
+          new TickerSuggest(this.app, t.inputEl, this.plugin, (hit) => {
+            this.ticker = hit.ticker;
+            this.pickedHit = hit;
+            if (hit.currency) {
+              this.currency = hit.currency;
+              this.renderForm(); // 통화 드롭다운에 반영
+            }
+          });
+        });
     }
     if (needsQtyPrice(this.action)) {
       new Setting(contentEl).setName("수량").addText((t) =>
@@ -151,9 +164,21 @@ export class TradeModal extends Modal {
 
     try {
       const file = await this.plugin.repository.createTradeNote(result.value, memoWithChecklist);
+      // 검색으로 고른 미등록 종목이면 메타 노트를 함께 만들어 시세·태그 분석이 바로 동작하게
+      const ticker = result.value.ticker;
+      if (
+        this.pickedHit &&
+        ticker === this.pickedHit.ticker &&
+        !this.plugin.state?.metas[ticker]
+      ) {
+        await this.plugin.repository
+          .createStockNote(this.pickedHit)
+          .then((stockFile) => new Notice(`종목 노트도 만들었어요: ${stockFile.basename}`))
+          .catch(() => undefined); // 종목 노트 실패가 매매 기록 자체를 막지 않게
+      }
       new Notice(`기록했어요: ${file.basename}`);
       this.close();
-      await this.plugin.reload();
+      await this.plugin.reload(true);
     } catch (e) {
       new Notice(`노트 생성에 실패했습니다: ${String(e)}`);
     }
