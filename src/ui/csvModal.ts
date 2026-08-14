@@ -29,7 +29,7 @@ export class CsvImportModal extends Modal {
 
     contentEl.createDiv({
       cls: "sm-basis",
-      text: "헤더: date, action(필수), ticker, qty, price, currency, amount, tags(세미콜론 구분)",
+      text: "헤더: date, action(필수), ticker, qty, price, currency, amount, account(계좌), tags(세미콜론 구분)",
     });
 
     new Setting(contentEl).setName("CSV 파일").addButton((btn) =>

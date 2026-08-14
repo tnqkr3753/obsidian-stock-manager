@@ -1,4 +1,4 @@
-import type { Position, RealizedEntry, ReplayResult, SellEvent, Trade } from "./types";
+import type { Position, ReplayResult, SellEvent, Trade } from "./types";
 import { DEFAULT_ACCOUNT } from "./types";
 
 interface Lot {
@@ -70,10 +70,35 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           warnings.push(`배당 기록에 ticker/amount가 없습니다: ${where(trade)}`);
           break;
         }
-        addCash(account, currency, trade.amount);
-        const key = lotKey(account, trade.ticker);
+        // account 없는 배당이 유령 '기본' 계좌를 만들지 않도록, 그 종목을 실제 보유한 계좌로 귀속한다
+        const ticker = trade.ticker;
+        let lot = lots.get(lotKey(account, ticker));
+        if (!lot || lot.qty <= EPSILON) {
+          const holders = [...lots.values()].filter((l) => l.ticker === ticker && l.qty > EPSILON);
+          if (holders.length === 1) {
+            lot = holders[0];
+            if (trade.account && trade.account !== lot!.account) {
+              warnings.push(
+                `배당의 계좌(${trade.account})에 보유가 없어 ${lot!.account} 계좌로 귀속했습니다: ${ticker} (${where(trade)})`,
+              );
+            }
+          } else if (holders.length === 0) {
+            warnings.push(`보유하지 않은 종목의 배당입니다: ${ticker} (${where(trade)})`);
+          }
+          // 여러 계좌가 보유 중이면 기록된 계좌를 그대로 쓴다 (자동 배분은 추측이 된다)
+        }
+        const targetAccount = lot?.account ?? account;
+        let dividendCurrency = currency;
+        if (lot && lot.currency !== currency) {
+          warnings.push(
+            `통화 불일치(보유 ${lot.currency}, 기록 ${currency}) — 배당을 보유 통화로 간주했습니다: ${ticker} (${where(trade)})`,
+          );
+          dividendCurrency = lot.currency;
+        }
+        addCash(targetAccount, dividendCurrency, trade.amount);
+        const key = lotKey(targetAccount, ticker);
         dividendsByLot.set(key, {
-          ticker: trade.ticker,
+          ticker,
           amount: (dividendsByLot.get(key)?.amount ?? 0) + trade.amount,
         });
         break;
@@ -147,23 +172,11 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
     }
   }
 
-  // 원장은 sellEvents 합에서 파생 — 이중 기록으로 인한 불일치를 원천 차단
+  // per-lot 원장은 sellEvents 합에서 파생 — 이중 기록으로 인한 불일치를 원천 차단
   const pnlByLot = new Map<string, number>();
-  const realizedByTicker = new Map<string, RealizedEntry>();
-  const addTickerLedger = (ticker: string, pnl: number, dividend: number): void => {
-    const prev = realizedByTicker.get(ticker) ?? { realizedPnl: 0, dividends: 0 };
-    realizedByTicker.set(ticker, {
-      realizedPnl: prev.realizedPnl + pnl,
-      dividends: prev.dividends + dividend,
-    });
-  };
   for (const event of sellEvents) {
     const key = lotKey(event.account, event.ticker);
     pnlByLot.set(key, (pnlByLot.get(key) ?? 0) + event.pnl);
-    addTickerLedger(event.ticker, event.pnl, 0);
-  }
-  for (const entry of dividendsByLot.values()) {
-    addTickerLedger(entry.ticker, 0, entry.amount);
   }
 
   const positions: Position[] = [...lots.entries()]
@@ -192,7 +205,6 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
     cashByAccount: Object.fromEntries(
       [...cashByAccount.entries()].map(([account, bucket]) => [account, Object.fromEntries(bucket)]),
     ),
-    realized: Object.fromEntries(realizedByTicker),
     sellEvents,
     warnings,
   };

@@ -9,10 +9,12 @@ export interface AssetFlowPoint {
 export interface AssetFlow {
   points: readonly AssetFlowPoint[];
   latestProfit: number; // 최신 시점 자산 - 원금
-  latestProfitPct: number;
+  latestProfitPct?: number; // 원금이 양수일 때만 — 원금 0/음수에 '+0.0%'를 보여주면 오독된다
+  hasInvested: boolean; // 입금 기록이 있어 원금 비교가 의미 있는지
+  fxIncomplete: boolean; // 환율 미확보 통화가 있어 원금이 부정확할 수 있는지
 }
 
-const EMPTY: AssetFlow = { points: [], latestProfit: 0, latestProfitPct: 0 };
+const EMPTY: AssetFlow = { points: [], latestProfit: 0, hasInvested: false, fxIncomplete: false };
 
 const rate = (currency: string, fx: FxMap): number => (currency === "KRW" ? 1 : fx[currency] ?? 1);
 
@@ -28,8 +30,9 @@ export function buildAssetFlow(
   const sorted = [...snapshots].sort((a, b) => (a.date < b.date ? -1 : 1));
   if (sorted.length < 2) return EMPTY;
 
-  const flows = trades
-    .filter((t) => t.action === "deposit" || t.action === "withdraw")
+  const flowTrades = trades.filter((t) => t.action === "deposit" || t.action === "withdraw");
+  const fxIncomplete = flowTrades.some((t) => t.currency !== "KRW" && fx[t.currency] === undefined);
+  const flows = flowTrades
     .map((t) => ({
       date: t.date,
       amount: (t.action === "deposit" ? 1 : -1) * (t.amount ?? 0) * rate(t.currency, fx),
@@ -48,9 +51,12 @@ export function buildAssetFlow(
 
   const latest = points[points.length - 1]!;
   const latestProfit = latest.assets - latest.invested;
+  const hasInvested = latest.invested > 0;
   return {
     points,
     latestProfit,
-    latestProfitPct: latest.invested > 0 ? latestProfit / latest.invested : 0,
+    ...(hasInvested ? { latestProfitPct: latestProfit / latest.invested } : {}),
+    hasInvested,
+    fxIncomplete,
   };
 }

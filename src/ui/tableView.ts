@@ -259,11 +259,19 @@ export class TableView extends ItemView {
     for (const col of COLUMNS) {
       const cell = totalRow.createEl("td");
       col.total?.(rows, cell);
+      // 실현손익 합계는 살아있는 행의 합이 아니라 전 계좌·청산 종목 포함 총액 —
+      // 한 계좌에서 전량 매도한 lot의 손익이 합계에서 사라지지 않게 한다
+      if (col.key === "realizedPnl" && this.filter === "all") {
+        cell.empty();
+        cell.setText(formatSignedKrw(state.totalRealizedPnl));
+        cell.className = "";
+        cell.addClass(signClass(state.totalRealizedPnl));
+      }
     }
 
     root.createDiv({
       cls: "sm-foot",
-      text: "해외 종목은 평단·현재가만 현지 통화, 금액 열은 원화 환산 · 헤더 클릭 정렬 · 행 클릭 시 종목 노트 열기",
+      text: "해외 종목은 평단·현재가만 현지 통화, 금액 열은 원화 환산 · 실현손익 합계는 청산 종목 포함 · 헤더 클릭 정렬 · 행 클릭 시 종목 노트 열기",
     });
   }
 

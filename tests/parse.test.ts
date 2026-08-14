@@ -56,6 +56,19 @@ describe("parseTrade", () => {
     if (!r1.ok) expect(r1.error).toContain("action");
   });
 
+  it("passes the account through, trims it, and stringifies numeric accounts", () => {
+    const r1 = parseTrade(
+      { type: "trade", date: "2026-01-01", action: "buy", ticker: "A", qty: 1, price: 10, account: " ISA " },
+      "t.md",
+    );
+    const r2 = parseTrade(
+      { type: "trade", date: "2026-01-01", action: "deposit", amount: 1, account: 123 },
+      "t.md",
+    );
+    expect(r1.ok && r1.value.account).toBe("ISA");
+    expect(r2.ok && r2.value.account).toBe("123");
+  });
+
   it("accepts retro tags with or without leading #", () => {
     const r = parseTrade(
       { type: "trade", date: "2026-01-01", action: "sell", ticker: "A", qty: 1, price: 10, tags: ["#손절", "뇌동매매"] },

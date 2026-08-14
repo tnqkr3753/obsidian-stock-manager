@@ -62,12 +62,7 @@ export interface Position {
   currency: string;
 }
 
-export interface RealizedEntry {
-  realizedPnl: number;
-  dividends: number;
-}
-
-/** 매도 1건의 실현 기록 — 월간 리포트의 기간 귀속·회고 태그 성적표에 쓰인다. */
+/** 매도 1건의 실현 기록 — 월간 리포트의 기간 귀속·회고 태그 성적표·총 실현손익에 쓰인다. */
 export interface SellEvent {
   date: string;
   ticker: string;
@@ -82,8 +77,7 @@ export interface ReplayResult {
   positions: readonly Position[];
   cash: Readonly<Record<string, number>>; // 통화별 현금 (전 계좌 합)
   cashByAccount: Readonly<Record<string, Readonly<Record<string, number>>>>; // 계좌 → 통화 → 잔액
-  realized: Readonly<Record<string, RealizedEntry>>; // 청산분 포함 종목별 누계 (계좌 합산)
-  sellEvents: readonly SellEvent[];
+  sellEvents: readonly SellEvent[]; // 실현손익의 유일한 원천 (청산 lot 포함)
   warnings: readonly string[];
 }
 

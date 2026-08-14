@@ -68,7 +68,7 @@ export default class StockManagerPlugin extends Plugin {
   private snapshotList: AssetSnapshot[] = [];
   private snapshotsReady = false; // loadSnapshots 완료 전 저장·리포트 차단 (빈 리스트로 이력 덮어쓰기 방지)
   private snapshotsWritable = true; // 파일 파싱 실패 시 false — 저장하면 이력이 파괴되므로 읽기 전용
-  private flow: AssetFlow = { points: [], latestProfit: 0, latestProfitPct: 0 };
+  private flow: AssetFlow = { points: [], latestProfit: 0, hasInvested: false, fxIncomplete: false };
 
   async onload(): Promise<void> {
     this.data = { ...structuredClone(DEFAULT_DATA), ...((await this.loadData()) ?? {}) };

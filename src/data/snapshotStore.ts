@@ -30,12 +30,15 @@ export class SnapshotStore {
       const raw = JSON.parse(await this.app.vault.adapter.read(this.path())) as unknown;
       if (!Array.isArray(raw)) return { snapshots: [], healthy: false };
       return {
+        // date는 렌더러의 innerHTML·Date.parse에 그대로 흘러간다 — 형식 검증으로 주입·NaN 차단
         snapshots: raw.filter(
           (s): s is AssetSnapshot =>
             typeof s === "object" &&
             s !== null &&
             typeof (s as AssetSnapshot).date === "string" &&
-            typeof (s as AssetSnapshot).totalAssets === "number",
+            /^\d{4}-\d{2}-\d{2}$/.test((s as AssetSnapshot).date) &&
+            typeof (s as AssetSnapshot).totalAssets === "number" &&
+            Number.isFinite((s as AssetSnapshot).totalAssets),
         ),
         healthy: true,
       };

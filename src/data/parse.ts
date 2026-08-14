@@ -62,7 +62,10 @@ export function parseTrade(fm: Frontmatter, path: string): Result<Trade> {
     date,
     action: action as TradeAction,
     currency: (asString(fm["currency"]) ?? "KRW").toUpperCase(),
-    account: asString(fm["account"]),
+    // 계좌명이 숫자(예: 123-45 없이 123)로 적혀도 문자열로 받아들인다
+    account:
+      asString(fm["account"]) ??
+      (typeof fm["account"] === "number" ? String(fm["account"]) : undefined),
     ticker: asString(fm["ticker"]),
     qty: asNumber(fm["qty"]),
     price: asNumber(fm["price"]),

@@ -37,9 +37,14 @@ export function computeAccountBreakdown(input: AccountBreakdownInput): readonly 
     const cashValue = cash[account] ?? 0;
     return { account, holdingsValue, cashValue, totalValue: holdingsValue + cashValue, weight: 0 };
   });
-  const grandTotal = entries.reduce((sum, e) => sum + e.totalValue, 0);
+  // 음수 잔액 계좌(입금 미기록 상태의 매수 등)가 있으면 총합 기준 비중이 100%를 넘어버린다
+  // — 비중은 양수 자산의 합 대비로만 계산하고, 음수 계좌는 0%로 둔다
+  const positiveSum = entries.reduce((sum, e) => sum + Math.max(e.totalValue, 0), 0);
 
   return entries
-    .map((e) => ({ ...e, weight: grandTotal > 0 ? e.totalValue / grandTotal : 0 }))
+    .map((e) => ({
+      ...e,
+      weight: e.totalValue > 0 && positiveSum > 0 ? e.totalValue / positiveSum : 0,
+    }))
     .sort((a, b) => b.totalValue - a.totalValue);
 }

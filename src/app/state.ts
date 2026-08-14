@@ -44,6 +44,7 @@ export interface PortfolioState {
   cashflow: Cashflow; // 최근 6개월 입출금 + 누적 투입 원금
   accounts: readonly AccountBreakdown[]; // 계좌별 자산 (ISA·신한 ...)
   names: Readonly<Record<string, string>>; // ticker → 표시 이름 (종목 노트 > 시세 응답)
+  totalRealizedPnl: number; // 전 계좌·청산 종목 포함 총 실현손익 (KRW) — 살아있는 행 합계와 다를 수 있다
   todayPnl: number; // 당일 등락 기반 오늘 손익 (KRW)
   config: PortfolioConfig;
   metas: Readonly<Record<string, StockMeta>>;
@@ -134,6 +135,10 @@ export function computeState(
       fx,
     }),
     names,
+    totalRealizedPnl: replay.sellEvents.reduce(
+      (sum, e) => sum + e.pnl * (e.currency === "KRW" ? 1 : fx[e.currency] ?? 1),
+      0,
+    ),
     valuation,
     tagExposure: computeTagExposure({
       rows: valuation.rows,

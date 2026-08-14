@@ -29,6 +29,19 @@ describe("computeAccountBreakdown", () => {
     expect(breakdown[0]!.weight).toBeCloseTo(0.9);
   });
 
+  it("computes weights against positive totals only when an account is negative", () => {
+    const breakdown = computeAccountBreakdown({
+      rows: [row("신한", 3_000_000)],
+      cashByAccount: { ISA: { KRW: -1_000_000 } }, // 입금 기록 없이 매수만 한 계좌
+      fx: {},
+    });
+    const shinhan = breakdown.find((a) => a.account === "신한")!;
+    const isa = breakdown.find((a) => a.account === "ISA")!;
+    expect(shinhan.weight).toBeCloseTo(1); // 100%를 넘지 않는다
+    expect(isa.weight).toBe(0);
+    expect(isa.totalValue).toBe(-1_000_000);
+  });
+
   it("returns empty for no data", () => {
     expect(computeAccountBreakdown({ rows: [], cashByAccount: {}, fx: {} })).toEqual([]);
   });

@@ -46,4 +46,23 @@ describe("buildAssetFlow", () => {
   it("returns empty for fewer than two snapshots", () => {
     expect(buildAssetFlow([{ date: "2026-07-01", totalAssets: 1 }], trades, {}).points).toEqual([]);
   });
+
+  it("flags missing fx instead of silently converting at rate 1", () => {
+    const flow = buildAssetFlow(
+      [{ date: "2026-07-10", totalAssets: 500 }, { date: "2026-07-11", totalAssets: 600 }],
+      [t({ date: "2026-07-01", amount: 100, currency: "USD" })],
+      {},
+    );
+    expect(flow.fxIncomplete).toBe(true);
+  });
+
+  it("omits the profit percentage when there is no positive invested principal", () => {
+    const flow = buildAssetFlow(
+      [{ date: "2026-07-10", totalAssets: 500 }, { date: "2026-07-11", totalAssets: 600 }],
+      [], // opening만으로 시작 — 입금 기록 없음
+      {},
+    );
+    expect(flow.latestProfitPct).toBeUndefined();
+    expect(flow.hasInvested).toBe(false);
+  });
 });

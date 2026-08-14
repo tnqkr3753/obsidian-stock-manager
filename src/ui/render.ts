@@ -55,20 +55,29 @@ export function renderHero(parent: HTMLElement, state: PortfolioState): void {
 
 /** "내 자산 흐름" — 총자산과 누적 투입 원금을 절대 금액으로 겹쳐, 원금 대비 얼마나 불었는지 보여준다. */
 export function renderAssetFlow(parent: HTMLElement, flow: AssetFlow): void {
-  if (flow.points.length < 2) return;
+  // date는 저장 시 검증되지만, 파싱 불가한 값이 섞여도 차트가 통째로 깨지지 않게 한 번 더 거른다
+  const points = flow.points.filter((p) => Number.isFinite(Date.parse(p.date)));
+  if (points.length < 2) return;
   const el = card(parent);
   const head = cardHead(el, "자산 흐름");
-  head.createSpan({
-    cls: `sm-legend-val sm-num ${signClass(flow.latestProfit)}`,
-    text: `원금 대비 ${formatSignedKrw(flow.latestProfit)} (${formatSignedPct(flow.latestProfitPct)})`,
-  });
+  if (flow.hasInvested) {
+    const pct = flow.latestProfitPct !== undefined ? ` (${formatSignedPct(flow.latestProfitPct)})` : "";
+    head.createSpan({
+      cls: `sm-legend-val sm-num ${signClass(flow.latestProfit)}`,
+      text: `원금 대비 ${formatSignedKrw(flow.latestProfit)}${pct}`,
+    });
+  } else {
+    head.createSpan({
+      cls: "sm-basis",
+      text: "입금(deposit)을 기록하면 원금 대비 수익이 계산돼요",
+    });
+  }
 
   const W = 360;
   const H = 130;
   const PAD = { x: 4, top: 8, bottom: 16 };
   const innerW = W - PAD.x * 2;
   const innerH = H - PAD.top - PAD.bottom;
-  const points = flow.points;
   const t0 = Date.parse(points[0]!.date);
   const t1 = Date.parse(points[points.length - 1]!.date);
   const tSpan = t1 - t0 || 1;
@@ -85,15 +94,24 @@ export function renderAssetFlow(parent: HTMLElement, flow: AssetFlow): void {
   const assetsLine = path((p) => p.assets);
   const investedLine = path((p) => p.invested);
   const last = points[points.length - 1]!;
+  // 라벨은 원시 문자열이 아니라 파싱된 시각에서 파생 — vault 파일은 외부 편집 가능한 신뢰 경계다
+  const label = (epoch: number): string =>
+    new Date(epoch).toISOString().slice(5, 10).replace("-", ".");
   const wrap = el.createDiv({ cls: "sm-trend" });
   wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="총자산과 누적 투입 원금 추이">
     <path d="${assetsLine} L${x(last.date).toFixed(1)} ${H - PAD.bottom} L${x(points[0]!.date).toFixed(1)} ${H - PAD.bottom} Z" fill="var(--sm-accent)" opacity="0.1"/>
     <path d="${assetsLine}" fill="none" stroke="var(--sm-accent)" stroke-width="2" stroke-linecap="round"/>
     <path d="${investedLine}" fill="none" stroke="var(--sm-bond)" stroke-width="1.5" stroke-dasharray="4 3" stroke-linecap="round"/>
     <circle cx="${x(last.date)}" cy="${y(last.assets)}" r="3.5" fill="var(--sm-accent)" stroke="var(--sm-card)" stroke-width="1.5"/>
-    <text x="${PAD.x}" y="${H - 3}" class="sm-trend-label">${points[0]!.date.slice(5).replace("-", ".")}</text>
-    <text x="${W - PAD.x}" y="${H - 3}" text-anchor="end" class="sm-trend-label">${last.date.slice(5).replace("-", ".")}</text>
+    <text x="${PAD.x}" y="${H - 3}" class="sm-trend-label">${label(t0)}</text>
+    <text x="${W - PAD.x}" y="${H - 3}" text-anchor="end" class="sm-trend-label">${label(t1)}</text>
   </svg>`;
+  if (flow.fxIncomplete) {
+    el.createDiv({
+      cls: "sm-foot",
+      text: "일부 외화 환율을 아직 받지 못해 원금이 부정확할 수 있어요 (시세 갱신 후 정확해집니다)",
+    });
+  }
 
   const legend = el.createDiv({ cls: "sm-legend sm-num" });
   const items: readonly [string, string, number][] = [

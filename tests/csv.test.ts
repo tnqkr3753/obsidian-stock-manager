@@ -15,6 +15,15 @@ describe("parseTradesCsv", () => {
     expect(trades[1]).toMatchObject({ action: "dividend", amount: 41200 });
   });
 
+  it("imports the account column and leaves it undefined when absent", () => {
+    const withAccount = parseTradesCsv(
+      "date,action,ticker,qty,price,account\n2026-01-01,buy,A,1,100,ISA",
+    );
+    expect(withAccount.trades[0]!.account).toBe("ISA");
+    const without = parseTradesCsv("date,action,ticker,qty,price\n2026-01-01,buy,A,1,100");
+    expect(without.trades[0]!.account).toBeUndefined();
+  });
+
   it("handles quoted fields containing commas", () => {
     const csv = 'date,action,ticker,qty,price,name\n2026-01-01,buy,"BRK,B",1,100,"버크셔, B주"';
     const { trades, errors } = parseTradesCsv(csv);

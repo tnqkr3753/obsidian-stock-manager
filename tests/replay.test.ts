@@ -42,13 +42,13 @@ describe("replayTrades", () => {
     expect(positions[0]!.realizedPnl).toBe(150);
   });
 
-  it("removes fully sold positions from the result", () => {
-    const { positions, realized } = replayTrades([
+  it("removes fully sold positions but keeps their pnl in sell events", () => {
+    const { positions, sellEvents } = replayTrades([
       t({ ticker: "A", qty: 10, price: 100 }),
       t({ date: "2026-01-02", action: "sell", ticker: "A", qty: 10, price: 90 }),
     ]);
     expect(positions).toHaveLength(0);
-    expect(realized["A"]).toMatchObject({ realizedPnl: -100 });
+    expect(sellEvents.reduce((s, e) => s + e.pnl, 0)).toBe(-100);
   });
 
   it("replays trades in date order even when input is unsorted", () => {
@@ -98,8 +98,8 @@ describe("replayTrades", () => {
     expect(cash["USD"]).toBe(500 - 360 + 200);
   });
 
-  it("keeps trade tags on the realized ledger for retro statistics", () => {
-    const { realized } = replayTrades([
+  it("keeps trade tags on sell events for retro statistics", () => {
+    const { sellEvents } = replayTrades([
       t({ ticker: "A", qty: 10, price: 100 }),
       t({
         date: "2026-01-02",
@@ -110,7 +110,7 @@ describe("replayTrades", () => {
         tags: ["손절"],
       }),
     ]);
-    expect(realized["A"]!.realizedPnl).toBe(200);
+    expect(sellEvents[0]).toMatchObject({ pnl: 200, tags: ["손절"] });
   });
 
   it("applies same-date buys before sells regardless of input order", () => {
@@ -143,18 +143,33 @@ describe("replayTrades", () => {
     expect(positions[0]!.currency).toBe("USD");
   });
 
-  it("keeps the realized ledger equal to the sum of sell events per ticker", () => {
-    const { realized, sellEvents } = replayTrades([
-      t({ ticker: "A", qty: 10, price: 100 }),
-      t({ date: "2026-01-02", action: "sell", ticker: "A", qty: 3, price: 120 }),
-      t({ date: "2026-01-03", action: "sell", ticker: "A", qty: 7, price: 90 }),
+  it("attributes an account-less dividend to the single account holding the ticker", () => {
+    const { positions, cashByAccount, warnings } = replayTrades([
+      t({ ticker: "A", qty: 10, price: 100, account: "ISA" }),
+      // README 기본 형식대로 account를 생략한 배당 — 유령 '기본' 계좌가 생기면 안 된다
       t({ date: "2026-02-01", action: "dividend", ticker: "A", amount: 500 }),
     ]);
-    const eventSum = sellEvents
-      .filter((e) => e.ticker === "A")
-      .reduce((s, e) => s + e.pnl, 0);
-    expect(realized["A"]!.realizedPnl).toBe(eventSum);
-    expect(realized["A"]!.dividends).toBe(500);
+    expect(positions[0]!.dividends).toBe(500);
+    expect(cashByAccount["ISA"]!["KRW"]).toBe(-1000 + 500);
+    expect(cashByAccount["기본"]).toBeUndefined();
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("warns when a dividend references a ticker no account holds", () => {
+    const { warnings } = replayTrades([
+      t({ action: "dividend", ticker: "GHOST", amount: 100 }),
+    ]);
+    expect(warnings.length).toBe(1);
+  });
+
+  it("treats a dividend recorded in a different currency as lot currency with a warning", () => {
+    const { positions, cash, warnings } = replayTrades([
+      t({ ticker: "AAPL", qty: 10, price: 100, currency: "USD" }),
+      t({ date: "2026-02-01", action: "dividend", ticker: "AAPL", amount: 14, currency: "KRW" }),
+    ]);
+    expect(positions[0]!.dividends).toBe(14);
+    expect(cash["USD"]).toBe(-1000 + 14);
+    expect(warnings.some((w) => w.includes("통화"))).toBe(true);
   });
 
   it("keeps separate lots and average costs per account for the same ticker", () => {
