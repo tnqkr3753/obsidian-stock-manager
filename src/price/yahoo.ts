@@ -1,6 +1,12 @@
 import { requestUrl } from "obsidian";
 import type { Quote } from "../domain/types";
-import { mapSearchQuote, type RawSearchQuote, type SymbolSearchHit } from "./symbolSearch";
+import {
+  mapNaverItem,
+  mapSearchQuote,
+  type RawNaverItem,
+  type RawSearchQuote,
+  type SymbolSearchHit,
+} from "./symbolSearch";
 
 /** 심볼 해석에 필요한 최소 정보 — StockMeta와 WatchItem 둘 다 만족한다. */
 export interface SymbolSource {
@@ -108,7 +114,30 @@ export async function fetchSeries(
   }
 }
 
-/** 회사명·심볼로 종목 검색 (한글 지원). 매매 입력 자동완성용. */
+/** 네이버 증권 자동완성 — 국내 종목을 한글로 검색하고 한글명을 받는다. */
+export async function searchKrSymbols(query: string): Promise<SymbolSearchHit[]> {
+  try {
+    const url = `https://ac.stock.naver.com/ac?q=${encodeURIComponent(query)}&target=stock`;
+    const res = await requestUrl({
+      url,
+      throw: false,
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (res.status !== 200) return [];
+    const items = (res.json as { items?: RawNaverItem[] }).items ?? [];
+    return items.map(mapNaverItem).filter((h): h is SymbolSearchHit => h !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** 국내 종목 코드 → 한글명 (정확히 일치하는 항목만). 표시 이름 캐시용. */
+export async function lookupKrName(code: string): Promise<string | undefined> {
+  const hits = await searchKrSymbols(code);
+  return hits.find((h) => h.ticker === code)?.name;
+}
+
+/** 야후 심볼 검색 — 해외 종목·영문 검색용. */
 export async function searchSymbols(query: string): Promise<SymbolSearchHit[]> {
   try {
     const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`;

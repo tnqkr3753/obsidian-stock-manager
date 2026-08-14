@@ -1,6 +1,6 @@
 import { AbstractInputSuggest, type App } from "obsidian";
 import type StockManagerPlugin from "../../main";
-import { searchSymbols } from "../price/yahoo";
+import { searchKrSymbols, searchSymbols } from "../price/yahoo";
 import type { SymbolSearchHit } from "../price/symbolSearch";
 
 /**
@@ -54,7 +54,10 @@ export class TickerSuggest extends AbstractInputSuggest<SymbolSearchHit> {
 
     let remote = this.remoteCache.get(trimmed);
     if (!remote) {
-      remote = await searchSymbols(trimmed);
+      // 국내(네이버, 한글명)를 먼저, 해외(야후)를 뒤에 — 코드 중복 시 한글명이 이긴다
+      const [kr, global] = await Promise.all([searchKrSymbols(trimmed), searchSymbols(trimmed)]);
+      const krTickers = new Set(kr.map((h) => h.ticker));
+      remote = [...kr, ...global.filter((h) => !krTickers.has(h.ticker))];
       this.remoteCache.set(trimmed, remote);
     }
     const localTickers = new Set(local.map((h) => h.ticker));

@@ -35,9 +35,13 @@ export interface AssetSnapshot {
  */
 export interface PersistedData {
   settings: StockManagerSettings;
-  quoteCache: Record<string, { price: number; currency: string; changePct?: number; asOf: number }>;
+  quoteCache: Record<
+    string,
+    { price: number; currency: string; changePct?: number; asOf: number; name?: string }
+  >;
   fxCache: Record<string, { rate: number; asOf: number }>;
   benchCache: Record<string, { series: { date: string; close: number }[]; asOf: number; range?: string }>;
+  krNames: Record<string, string>; // 국내 종목 코드 → 한글명 (야후는 영문명만 줘서 별도 캐시)
   snapshots: AssetSnapshot[];
 }
 
@@ -46,5 +50,6 @@ export const DEFAULT_DATA: PersistedData = {
   quoteCache: {},
   fxCache: {},
   benchCache: {},
+  krNames: {},
   snapshots: [],
 };

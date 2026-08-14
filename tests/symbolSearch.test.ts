@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { mapSearchQuote } from "../src/price/symbolSearch";
+import { mapNaverItem, mapSearchQuote } from "../src/price/symbolSearch";
+
+describe("mapNaverItem", () => {
+  it("maps a KOSPI stock with the Korean name and .KS yahoo symbol", () => {
+    expect(
+      mapNaverItem({ code: "005930", name: "삼성전자", typeCode: "KOSPI", category: "stock", nationCode: "KOR" }),
+    ).toEqual({
+      ticker: "005930",
+      name: "삼성전자",
+      market: "KOSPI",
+      currency: "KRW",
+      yahooSymbol: "005930.KS",
+    });
+  });
+
+  it("maps KOSDAQ to a .KQ suffix and keeps alphanumeric ETF codes", () => {
+    const kosdaq = mapNaverItem({ code: "035720", name: "카카오", typeCode: "KOSDAQ", category: "stock", nationCode: "KOR" });
+    expect(kosdaq).toMatchObject({ market: "KOSDAQ", yahooSymbol: "035720.KQ" });
+    const etf = mapNaverItem({ code: "0162Z0", name: "RISE 혼합50", typeCode: "KOSPI", category: "stock", nationCode: "KOR" });
+    expect(etf).toMatchObject({ ticker: "0162Z0", yahooSymbol: "0162Z0.KS" });
+  });
+
+  it("drops non-stock or non-Korean items", () => {
+    expect(mapNaverItem({ code: "X", name: "지수", typeCode: "KOSPI", category: "index", nationCode: "KOR" })).toBeNull();
+    expect(mapNaverItem({ code: "AAPL", name: "애플", typeCode: "NASDAQ", category: "stock", nationCode: "USA" })).toBeNull();
+  });
+});
 
 describe("mapSearchQuote", () => {
   it("maps a .KS symbol to a 6-digit KOSPI ticker in KRW", () => {

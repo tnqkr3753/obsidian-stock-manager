@@ -17,6 +17,27 @@ export interface SymbolSearchHit {
   yahooSymbol: string;
 }
 
+/** 네이버 증권 자동완성 응답 1건 — 국내 종목의 한글명·시장 구분의 원천. */
+export interface RawNaverItem {
+  code: string;
+  name: string;
+  typeCode?: string; // KOSPI | KOSDAQ ...
+  category?: string; // stock | index ...
+  nationCode?: string; // KOR ...
+}
+
+export function mapNaverItem(raw: RawNaverItem): SymbolSearchHit | null {
+  if (raw.category !== "stock" || raw.nationCode !== "KOR") return null;
+  const market = raw.typeCode === "KOSDAQ" ? "KOSDAQ" : "KOSPI";
+  return {
+    ticker: raw.code,
+    name: raw.name,
+    market,
+    currency: "KRW",
+    yahooSymbol: `${raw.code}.${market === "KOSDAQ" ? "KQ" : "KS"}`,
+  };
+}
+
 const TRADABLE_TYPES = new Set(["EQUITY", "ETF", "MUTUALFUND"]);
 const US_EXCHANGES = new Set(["NMS", "NYQ", "NGM", "NCM", "PCX", "ASE", "BTS", "PNK"]);
 

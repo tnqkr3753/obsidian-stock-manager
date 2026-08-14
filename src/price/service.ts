@@ -1,7 +1,17 @@
 import type { BenchSeries } from "../domain/benchmark";
 import type { FxMap, Position, Quote, QuoteMap, StockMeta, WatchItem } from "../domain/types";
 import type { BenchmarkSetting, PersistedData } from "../settings";
-import { fetchFxToKrw, fetchQuote, fetchSeries, toYahooSymbol, type SymbolSource } from "./yahoo";
+import {
+  fetchFxToKrw,
+  fetchQuote,
+  fetchSeries,
+  lookupKrName,
+  toYahooSymbol,
+  type SymbolSource,
+} from "./yahoo";
+
+/** 국내 종목 코드 형태 (6자리 숫자, 또는 숫자를 포함한 6자리 영숫자 ETF 코드). */
+const KRX_CODE = /^(?=.*\d)[0-9A-Z]{6}$/;
 
 const CONCURRENCY = 4;
 
@@ -108,6 +118,19 @@ export class PriceService {
           .map(({ currency, rate }) => [currency, { rate: rate!, asOf: Date.now() }]),
       ),
     };
+
+    // 야후는 국내 종목명을 영문으로만 준다 — 한글명은 네이버에서 1회 조회해 영구 캐시
+    const needKrName = tickers.filter((t) => KRX_CODE.test(t) && !store.krNames[t]);
+    const krNameResults = await mapWithLimit(needKrName, CONCURRENCY, async (ticker) => ({
+      ticker,
+      name: await lookupKrName(ticker),
+    }));
+    store.krNames = {
+      ...store.krNames,
+      ...Object.fromEntries(
+        krNameResults.filter((r) => r.name).map((r) => [r.ticker, r.name!]),
+      ),
+    };
     await this.persist();
 
     return this.fromCache(tickers);
@@ -119,7 +142,9 @@ export class PriceService {
     const quotes: Record<string, Quote> = {};
     for (const ticker of tickers) {
       const cached = store.quoteCache[ticker];
-      if (cached) quotes[ticker] = { ...cached };
+      if (cached) {
+        quotes[ticker] = { ...cached, name: store.krNames[ticker] ?? cached.name };
+      }
     }
     const fx = Object.fromEntries(
       Object.entries(store.fxCache).map(([currency, cached]) => [currency, cached.rate]),
