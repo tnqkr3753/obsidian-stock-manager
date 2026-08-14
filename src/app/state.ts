@@ -1,4 +1,5 @@
 import type { VaultSnapshot } from "../data/repository";
+import { computeAccountBreakdown, type AccountBreakdown } from "../domain/accounts";
 import { computeCashflow, type Cashflow } from "../domain/cashflow";
 import { upcomingEvents, type UpcomingEvent } from "../domain/events";
 import { computeRebalance } from "../domain/rebalance";
@@ -41,6 +42,7 @@ export interface PortfolioState {
   watchRows: readonly WatchRow[];
   upcoming: readonly UpcomingEvent[]; // 다가오는 이벤트 (30일)
   cashflow: Cashflow; // 최근 6개월 입출금 + 누적 투입 원금
+  accounts: readonly AccountBreakdown[]; // 계좌별 자산 (ISA·신한 ...)
   todayPnl: number; // 당일 등락 기반 오늘 손익 (KRW)
   config: PortfolioConfig;
   metas: Readonly<Record<string, StockMeta>>;
@@ -118,6 +120,11 @@ export function computeState(
   return {
     upcoming: upcomingEvents(allEvents, today, EVENT_HORIZON_DAYS),
     cashflow: computeCashflow(snapshot.trades, today, CASHFLOW_MONTHS),
+    accounts: computeAccountBreakdown({
+      rows: valuation.rows,
+      cashByAccount: replay.cashByAccount,
+      fx,
+    }),
     valuation,
     tagExposure: computeTagExposure({
       rows: valuation.rows,

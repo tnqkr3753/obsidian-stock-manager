@@ -12,11 +12,14 @@ export const TRADE_ACTIONS: readonly TradeAction[] = [
   "withdraw",
 ];
 
+export const DEFAULT_ACCOUNT = "기본";
+
 /** 매매일지 노트 한 건. vault의 유일한 진실이며 나머지는 전부 파생된다. */
 export interface Trade {
   date: string; // YYYY-MM-DD
   action: TradeAction;
   currency: string; // KRW, USD ...
+  account?: string; // ISA, 신한 ... (없으면 "기본")
   ticker?: string;
   qty?: number;
   price?: number; // 종목 통화 기준
@@ -50,11 +53,12 @@ export interface PortfolioConfig {
 
 export interface Position {
   ticker: string;
+  account: string; // 계좌별로 lot·평단이 분리된다
   qty: number;
   avgCost: number; // 종목 통화
   costBasis: number; // qty * avgCost
-  realizedPnl: number; // 종목 통화, 누적
-  dividends: number; // 종목 통화, 누적
+  realizedPnl: number; // 종목 통화, 이 계좌 누적
+  dividends: number; // 종목 통화, 이 계좌 누적
   currency: string;
 }
 
@@ -67,6 +71,7 @@ export interface RealizedEntry {
 export interface SellEvent {
   date: string;
   ticker: string;
+  account: string;
   qty: number;
   pnl: number; // 종목 통화
   currency: string;
@@ -75,8 +80,9 @@ export interface SellEvent {
 
 export interface ReplayResult {
   positions: readonly Position[];
-  cash: Readonly<Record<string, number>>; // 통화별 현금
-  realized: Readonly<Record<string, RealizedEntry>>; // 청산분 포함 종목별 누계
+  cash: Readonly<Record<string, number>>; // 통화별 현금 (전 계좌 합)
+  cashByAccount: Readonly<Record<string, Readonly<Record<string, number>>>>; // 계좌 → 통화 → 잔액
+  realized: Readonly<Record<string, RealizedEntry>>; // 청산분 포함 종목별 누계 (계좌 합산)
   sellEvents: readonly SellEvent[];
   warnings: readonly string[];
 }
@@ -91,9 +97,10 @@ export interface Quote {
 export type QuoteMap = Readonly<Record<string, Quote>>;
 export type FxMap = Readonly<Record<string, number>>; // "USD" → KRW 환율
 
-/** 평가 완료된 보유 종목 한 행. 금액 필드는 전부 기준통화(KRW) 환산값. */
+/** 평가 완료된 보유 종목 한 행 (계좌별). 금액 필드는 전부 기준통화(KRW) 환산값. */
 export interface HoldingRow {
   ticker: string;
+  account: string;
   name: string;
   assetClass: HoldingClass;
   currency: string;

@@ -157,6 +157,41 @@ describe("replayTrades", () => {
     expect(realized["A"]!.dividends).toBe(500);
   });
 
+  it("keeps separate lots and average costs per account for the same ticker", () => {
+    const { positions } = replayTrades([
+      t({ ticker: "A", qty: 10, price: 100, account: "ISA" }),
+      t({ date: "2026-01-02", ticker: "A", qty: 10, price: 200, account: "신한" }),
+    ]);
+    expect(positions).toHaveLength(2);
+    const isa = positions.find((p) => p.account === "ISA")!;
+    const shinhan = positions.find((p) => p.account === "신한")!;
+    expect(isa.avgCost).toBe(100);
+    expect(shinhan.avgCost).toBe(200);
+  });
+
+  it("defaults missing account to 기본 and sells only from that account's lot", () => {
+    const { positions, warnings } = replayTrades([
+      t({ ticker: "A", qty: 10, price: 100 }), // 기본 계좌
+      t({ date: "2026-01-02", ticker: "A", qty: 5, price: 100, account: "ISA" }),
+      t({ date: "2026-01-03", action: "sell", ticker: "A", qty: 8, price: 120, account: "ISA" }),
+    ]);
+    // ISA에는 5주뿐 — 8주 매도는 5주로 조정 경고, 기본 계좌 10주는 그대로
+    expect(warnings.length).toBe(1);
+    expect(positions.find((p) => p.account === "기본")!.qty).toBe(10);
+    expect(positions.find((p) => p.account === "ISA")).toBeUndefined();
+  });
+
+  it("tracks cash per account while keeping the flat per-currency view", () => {
+    const { cash, cashByAccount } = replayTrades([
+      t({ action: "deposit", amount: 1_000_000, account: "ISA" }),
+      t({ date: "2026-01-02", action: "deposit", amount: 500_000, account: "신한" }),
+      t({ date: "2026-01-03", ticker: "A", qty: 5, price: 100_000, account: "ISA" }),
+    ]);
+    expect(cash["KRW"]).toBe(1_000_000);
+    expect(cashByAccount["ISA"]!["KRW"]).toBe(500_000);
+    expect(cashByAccount["신한"]!["KRW"]).toBe(500_000);
+  });
+
   it("does not mutate the input array", () => {
     const input = [
       t({ date: "2026-01-02", ticker: "A", qty: 1, price: 1 }),

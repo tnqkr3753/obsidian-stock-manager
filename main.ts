@@ -10,6 +10,7 @@ import {
 import { computeState, type PortfolioState } from "./src/app/state";
 import { VaultRepository } from "./src/data/repository";
 import { SnapshotStore } from "./src/data/snapshotStore";
+import { buildAssetFlow, type AssetFlow } from "./src/domain/assetFlow";
 import type { BenchSeries } from "./src/domain/benchmark";
 import { replayTrades } from "./src/domain/replay";
 import { buildMonthlyReportMarkdown, computeMonthlyReport } from "./src/domain/report";
@@ -67,6 +68,7 @@ export default class StockManagerPlugin extends Plugin {
   private snapshotList: AssetSnapshot[] = [];
   private snapshotsReady = false; // loadSnapshots 완료 전 저장·리포트 차단 (빈 리스트로 이력 덮어쓰기 방지)
   private snapshotsWritable = true; // 파일 파싱 실패 시 false — 저장하면 이력이 파괴되므로 읽기 전용
+  private flow: AssetFlow = { points: [], latestProfit: 0, latestProfitPct: 0 };
 
   async onload(): Promise<void> {
     this.data = { ...structuredClone(DEFAULT_DATA), ...((await this.loadData()) ?? {}) };
@@ -170,6 +172,14 @@ export default class StockManagerPlugin extends Plugin {
     return this.prices.benchSeries(this.data.settings.benchmarks);
   }
 
+  assetFlow(): AssetFlow {
+    return this.flow;
+  }
+
+  async openTableView(): Promise<void> {
+    await this.activateView(VIEW_TYPE_TABLE, "tab");
+  }
+
   /** vault의 snapshots.json을 원본으로 로드하고, 구버전 data.json 스냅샷은 1회 머지 후 비운다. */
   private async loadSnapshots(): Promise<void> {
     const { snapshots: vaultSnapshots, healthy } = await this.snapshotStore.load();
@@ -243,6 +253,7 @@ export default class StockManagerPlugin extends Plugin {
     if (withFetch && this.data.settings.snapshotEnabled && this.state.tradeCount > 0) {
       await this.recordSnapshot(this.state.valuation.totalAssets);
     }
+    this.flow = buildAssetFlow(this.snapshotList, snapshot.trades, fx);
     this.rerenderViews();
   }
 

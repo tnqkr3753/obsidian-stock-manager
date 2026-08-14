@@ -352,7 +352,7 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
 }
 .sm-htable th.sm-sortable { cursor: pointer; }
 .sm-htable th.sm-sorted { color: var(--sm-accent); }
-.sm-htable th:nth-child(-n + 2), .sm-htable td:nth-child(-n + 2) { text-align: left; }
+.sm-htable th:nth-child(-n + 3), .sm-htable td:nth-child(-n + 3) { text-align: left; }
 .sm-htable td { text-align: right; padding: 9px 8px; border-bottom: 1px solid var(--sm-line); white-space: nowrap; }
 .sm-htable tbody tr { cursor: pointer; }
 .sm-htable tbody tr:hover td { background: var(--sm-card-sub); }
@@ -361,6 +361,21 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
 .sm-strong { font-weight: 700; color: var(--sm-ink); }
 .sm-muted { color: var(--sm-ink-3); }
 .sm-htable tfoot td { border-bottom: none; border-top: 2px solid var(--sm-line); font-weight: 800; }
+
+/* ── 계좌별 자산 ──────────────────────── */
+.sm-account-row { display: flex; flex-direction: column; gap: 5px; }
+.sm-textlink {
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--sm-accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.sm-textlink:hover { background: var(--sm-accent-soft); }
 
 /* ── 종목 검색 자동완성 ───────────────── */
 .sm-ticker-suggestion .sm-nm { font-size: 0.9em; font-weight: 600; }

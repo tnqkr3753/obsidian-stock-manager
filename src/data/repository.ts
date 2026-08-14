@@ -172,6 +172,7 @@ export class VaultRepository {
       "type: trade",
       `date: ${trade.date}`,
       `action: ${trade.action}`,
+      ...(trade.account ? [`account: ${yamlString(trade.account)}`] : []),
       ...(trade.ticker ? [`ticker: ${yamlString(trade.ticker)}`] : []),
       ...(trade.qty !== undefined ? [`qty: ${trade.qty}`] : []),
       ...(trade.price !== undefined ? [`price: ${trade.price}`] : []),

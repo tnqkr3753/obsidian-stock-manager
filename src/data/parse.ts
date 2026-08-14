@@ -62,6 +62,7 @@ export function parseTrade(fm: Frontmatter, path: string): Result<Trade> {
     date,
     action: action as TradeAction,
     currency: (asString(fm["currency"]) ?? "KRW").toUpperCase(),
+    account: asString(fm["account"]),
     ticker: asString(fm["ticker"]),
     qty: asNumber(fm["qty"]),
     price: asNumber(fm["price"]),

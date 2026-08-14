@@ -2,7 +2,9 @@ import { ItemView, WorkspaceLeaf } from "obsidian";
 import type StockManagerPlugin from "../../main";
 import { formatTime } from "./format";
 import {
+  renderAccounts,
   renderAllocation,
+  renderAssetFlow,
   renderCashflow,
   renderEvents,
   renderHero,
@@ -68,15 +70,18 @@ export class DashboardView extends ItemView {
       });
     } else {
       const openPath = (path: string): void => this.plugin.openPath(path);
+      // 흐름 중심 배치: 자산이 어떻게 흘러왔는지(흐름·시장 비교·현금흐름·계좌) → 지금 구성 → 상세
       renderHero(root, state);
+      renderAssetFlow(root, this.plugin.assetFlow());
       renderTrend(root, this.plugin.snapshots(), this.plugin.benchmarkSeries());
+      renderCashflow(root, state);
+      renderAccounts(root, state);
       renderAllocation(root, state);
-      renderHoldings(root, state, openPath);
+      renderHoldings(root, state, openPath, () => void this.plugin.openTableView());
       renderTags(root, state);
       renderWatchlist(root, state, openPath);
       renderEvents(root, state);
       renderJournal(root, state, openPath);
-      renderCashflow(root, state);
       renderMacros(root, state, openPath);
       renderWarnings(root, state);
     }

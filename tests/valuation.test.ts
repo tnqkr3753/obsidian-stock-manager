@@ -4,6 +4,7 @@ import type { Position, StockMeta } from "../src/domain/types";
 
 const pos = (partial: Partial<Position>): Position => ({
   ticker: "A",
+  account: "기본",
   qty: 10,
   avgCost: 100,
   costBasis: 1000,

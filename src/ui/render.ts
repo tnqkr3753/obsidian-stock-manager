@@ -1,4 +1,5 @@
 import type { PortfolioState } from "../app/state";
+import type { AssetFlow } from "../domain/assetFlow";
 import { buildOverlay, type BenchSeries } from "../domain/benchmark";
 import type { AssetSnapshot } from "../settings";
 import {
@@ -50,6 +51,87 @@ export function renderHero(parent: HTMLElement, state: PortfolioState): void {
   const basisParts = [`매매일지 ${state.tradeCount}건에서 계산됨`];
   if (state.lastUpdated) basisParts.push(`시세 ${formatTime(state.lastUpdated)} 기준`);
   el.createDiv({ cls: "sm-basis", text: basisParts.join(" · ") });
+}
+
+/** "내 자산 흐름" — 총자산과 누적 투입 원금을 절대 금액으로 겹쳐, 원금 대비 얼마나 불었는지 보여준다. */
+export function renderAssetFlow(parent: HTMLElement, flow: AssetFlow): void {
+  if (flow.points.length < 2) return;
+  const el = card(parent);
+  const head = cardHead(el, "자산 흐름");
+  head.createSpan({
+    cls: `sm-legend-val sm-num ${signClass(flow.latestProfit)}`,
+    text: `원금 대비 ${formatSignedKrw(flow.latestProfit)} (${formatSignedPct(flow.latestProfitPct)})`,
+  });
+
+  const W = 360;
+  const H = 130;
+  const PAD = { x: 4, top: 8, bottom: 16 };
+  const innerW = W - PAD.x * 2;
+  const innerH = H - PAD.top - PAD.bottom;
+  const points = flow.points;
+  const t0 = Date.parse(points[0]!.date);
+  const t1 = Date.parse(points[points.length - 1]!.date);
+  const tSpan = t1 - t0 || 1;
+  const values = points.flatMap((p) => [p.assets, p.invested]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+
+  const x = (date: string): number => PAD.x + ((Date.parse(date) - t0) / tSpan) * innerW;
+  const y = (v: number): number => PAD.top + (1 - (v - min + span * 0.08) / (span * 1.16)) * innerH;
+  const path = (get: (p: AssetFlow["points"][number]) => number): string =>
+    points.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)} ${y(get(p)).toFixed(1)}`).join(" ");
+
+  const assetsLine = path((p) => p.assets);
+  const investedLine = path((p) => p.invested);
+  const last = points[points.length - 1]!;
+  const wrap = el.createDiv({ cls: "sm-trend" });
+  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="총자산과 누적 투입 원금 추이">
+    <path d="${assetsLine} L${x(last.date).toFixed(1)} ${H - PAD.bottom} L${x(points[0]!.date).toFixed(1)} ${H - PAD.bottom} Z" fill="var(--sm-accent)" opacity="0.1"/>
+    <path d="${assetsLine}" fill="none" stroke="var(--sm-accent)" stroke-width="2" stroke-linecap="round"/>
+    <path d="${investedLine}" fill="none" stroke="var(--sm-bond)" stroke-width="1.5" stroke-dasharray="4 3" stroke-linecap="round"/>
+    <circle cx="${x(last.date)}" cy="${y(last.assets)}" r="3.5" fill="var(--sm-accent)" stroke="var(--sm-card)" stroke-width="1.5"/>
+    <text x="${PAD.x}" y="${H - 3}" class="sm-trend-label">${points[0]!.date.slice(5).replace("-", ".")}</text>
+    <text x="${W - PAD.x}" y="${H - 3}" text-anchor="end" class="sm-trend-label">${last.date.slice(5).replace("-", ".")}</text>
+  </svg>`;
+
+  const legend = el.createDiv({ cls: "sm-legend sm-num" });
+  const items: readonly [string, string, number][] = [
+    ["총자산", "var(--sm-accent)", last.assets],
+    ["투입 원금", "var(--sm-bond)", last.invested],
+  ];
+  for (const [label, color, value] of items) {
+    const item = legend.createDiv({ cls: "sm-legend-item" });
+    const dot = item.createSpan({ cls: "sm-dot" });
+    dot.style.background = color;
+    item.createSpan({ cls: "sm-name", text: label });
+    item.createSpan({ cls: "sm-legend-val", text: formatKrw(value) });
+  }
+}
+
+/** 계좌별 자산 카드 — ISA·연금·증권사 계좌 단위 평가액+현금과 비중. */
+export function renderAccounts(parent: HTMLElement, state: PortfolioState): void {
+  // 계좌를 실제로 나눠 쓰는 경우에만 (기본 계좌 하나뿐이면 노이즈)
+  if (state.accounts.length < 2) return;
+  const el = card(parent);
+  cardHead(el, "계좌별 자산");
+
+  const list = el.createDiv({ cls: "sm-alloc-list sm-num" });
+  const maxWeight = state.accounts[0]?.weight || 1;
+  for (const account of state.accounts) {
+    const row = list.createDiv({ cls: "sm-account-row" });
+    const top = row.createDiv({ cls: "sm-alloc-row" });
+    top.createSpan({ cls: "sm-name", text: account.account });
+    top.createSpan({ cls: "sm-pct", text: formatPct(account.weight) });
+    top.createSpan({ cls: "sm-amt", text: formatKrw(account.totalValue) });
+    const track = row.createDiv({ cls: "sm-tag-track" });
+    const fill = track.createDiv({ cls: "sm-tag-fill" });
+    fill.style.width = `${(account.weight / maxWeight) * 100}%`;
+    row.createDiv({
+      cls: "sm-foot",
+      text: `평가 ${formatKrw(account.holdingsValue)} · 현금 ${formatKrw(account.cashValue)}`,
+    });
+  }
 }
 
 const SERIES_COLORS = ["var(--sm-accent)", "var(--sm-bond)", "var(--sm-cash)"];
@@ -204,11 +286,19 @@ export function renderHoldings(
   parent: HTMLElement,
   state: PortfolioState,
   openPath: OpenPath,
+  openTable?: () => void,
 ): void {
   const el = card(parent);
   const head = cardHead(el, "보유 종목");
   head.createSpan({ cls: "sm-count sm-num", text: String(state.valuation.rows.length) });
+  if (openTable) {
+    const spacer = head.createSpan();
+    spacer.style.flex = "1";
+    const btn = head.createEl("button", { cls: "sm-textlink", text: "상세 테이블 →" });
+    btn.onClickEvent(() => openTable());
+  }
 
+  const multiAccount = state.accounts.length > 1;
   const list = el.createDiv({ cls: "sm-holding-list sm-num" });
   for (const row of state.valuation.rows) {
     const item = list.createDiv({ cls: "sm-holding" });
@@ -224,7 +314,10 @@ export function renderHoldings(
     if (row.stale) nameLine.createSpan({ cls: "sm-stale", text: "시세 없음" });
     mid.createDiv({
       cls: "sm-sub",
-      text: `${formatQty(row.qty)}주 · 평단 ${formatNative(row.avgCost, row.currency)}`,
+      text: [
+        ...(multiAccount ? [row.account] : []),
+        `${formatQty(row.qty)}주 · 평단 ${formatNative(row.avgCost, row.currency)}`,
+      ].join(" · "),
     });
 
     const right = item.createDiv({ cls: "sm-right" });

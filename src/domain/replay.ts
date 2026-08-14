@@ -1,6 +1,9 @@
 import type { Position, RealizedEntry, ReplayResult, SellEvent, Trade } from "./types";
+import { DEFAULT_ACCOUNT } from "./types";
 
 interface Lot {
+  ticker: string;
+  account: string;
   qty: number;
   avgCost: number;
   currency: string;
@@ -21,8 +24,11 @@ const SAME_DATE_ORDER: Record<Trade["action"], number> = {
   withdraw: 5,
 };
 
+const lotKey = (account: string, ticker: string): string => `${account}\u0000${ticker}`;
+
 /**
  * 매매일지 리플레이 — 보유량·평단·실현손익·배당·현금을 전부 일지에서 파생한다.
+ * lot은 계좌+종목 단위: 같은 종목이라도 계좌(ISA·신한 등)가 다르면 평단·보유량이 분리된다.
  * opening은 기존 보유 스냅샷이므로 현금에 영향을 주지 않고, buy/sell/배당/입출금만 현금을 움직인다.
  * 데이터 오류(과매도·통화 불일치 등)는 던지지 않고 경고로 수집해 대시보드가 항상 그려지게 한다.
  */
@@ -37,32 +43,39 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
     .map((x) => x.trade);
 
   const lots = new Map<string, Lot>();
-  const cash = new Map<string, number>();
-  const dividends = new Map<string, number>();
+  const cashByAccount = new Map<string, Map<string, number>>();
+  const dividendsByLot = new Map<string, { ticker: string; amount: number }>();
   const sellEvents: SellEvent[] = [];
   const warnings: string[] = [];
 
-  const addCash = (currency: string, delta: number): void => {
-    cash.set(currency, (cash.get(currency) ?? 0) + delta);
+  const addCash = (account: string, currency: string, delta: number): void => {
+    const bucket = cashByAccount.get(account) ?? new Map<string, number>();
+    bucket.set(currency, (bucket.get(currency) ?? 0) + delta);
+    cashByAccount.set(account, bucket);
   };
   const where = (trade: Trade): string => trade.path ?? trade.date;
 
   for (const trade of sorted) {
     const currency = trade.currency || "KRW";
+    const account = trade.account || DEFAULT_ACCOUNT;
     switch (trade.action) {
       case "deposit":
-        addCash(currency, trade.amount ?? 0);
+        addCash(account, currency, trade.amount ?? 0);
         break;
       case "withdraw":
-        addCash(currency, -(trade.amount ?? 0));
+        addCash(account, currency, -(trade.amount ?? 0));
         break;
       case "dividend": {
         if (!trade.ticker || !trade.amount) {
           warnings.push(`배당 기록에 ticker/amount가 없습니다: ${where(trade)}`);
           break;
         }
-        addCash(currency, trade.amount);
-        dividends.set(trade.ticker, (dividends.get(trade.ticker) ?? 0) + trade.amount);
+        addCash(account, currency, trade.amount);
+        const key = lotKey(account, trade.ticker);
+        dividendsByLot.set(key, {
+          ticker: trade.ticker,
+          amount: (dividendsByLot.get(key)?.amount ?? 0) + trade.amount,
+        });
         break;
       }
       case "opening":
@@ -71,7 +84,14 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           warnings.push(`매수 기록에 ticker/qty/price가 없습니다: ${where(trade)}`);
           break;
         }
-        const prev = lots.get(trade.ticker) ?? { qty: 0, avgCost: 0, currency };
+        const key = lotKey(account, trade.ticker);
+        const prev = lots.get(key) ?? {
+          ticker: trade.ticker,
+          account,
+          qty: 0,
+          avgCost: 0,
+          currency,
+        };
         // 기존 보유와 통화가 다르면 평단이 서로 다른 단위를 섞게 된다 — 보유 통화 기준으로 처리하고 경고
         const lotCurrency = prev.qty > EPSILON ? prev.currency : currency;
         if (prev.qty > EPSILON && prev.currency !== currency) {
@@ -81,8 +101,8 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
         }
         const qty = prev.qty + trade.qty;
         const avgCost = (prev.qty * prev.avgCost + trade.qty * trade.price) / qty;
-        lots.set(trade.ticker, { qty, avgCost, currency: lotCurrency });
-        if (trade.action === "buy") addCash(lotCurrency, -trade.qty * trade.price);
+        lots.set(key, { ...prev, qty, avgCost, currency: lotCurrency });
+        if (trade.action === "buy") addCash(account, lotCurrency, -trade.qty * trade.price);
         break;
       }
       case "sell": {
@@ -90,9 +110,12 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
           warnings.push(`매도 기록에 ticker/qty/price가 없습니다: ${where(trade)}`);
           break;
         }
-        const prev = lots.get(trade.ticker);
+        const key = lotKey(account, trade.ticker);
+        const prev = lots.get(key);
         if (!prev || prev.qty <= EPSILON) {
-          warnings.push(`보유하지 않은 종목을 매도했습니다: ${trade.ticker} (${where(trade)})`);
+          warnings.push(
+            `${account} 계좌에 보유하지 않은 종목을 매도했습니다: ${trade.ticker} (${where(trade)})`,
+          );
           break;
         }
         if (prev.currency !== currency) {
@@ -103,57 +126,73 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
         const sellQty = Math.min(trade.qty, prev.qty);
         if (sellQty < trade.qty) {
           warnings.push(
-            `보유량(${prev.qty})보다 많은 수량(${trade.qty})을 매도해 ${sellQty}로 조정했습니다: ${trade.ticker} (${where(trade)})`,
+            `${account} 계좌 보유량(${prev.qty})보다 많은 수량(${trade.qty})을 매도해 ${sellQty}로 조정했습니다: ${trade.ticker} (${where(trade)})`,
           );
         }
         // 실현손익의 유일한 기록처는 sellEvents — realized 원장은 아래에서 이벤트 합으로 파생된다
         const pnl = sellQty * (trade.price - prev.avgCost);
-        addCash(prev.currency, sellQty * trade.price);
+        addCash(account, prev.currency, sellQty * trade.price);
         sellEvents.push({
           date: trade.date,
           ticker: trade.ticker,
+          account,
           qty: sellQty,
           pnl,
           currency: prev.currency,
           tags: trade.tags ?? [],
         });
-        lots.set(trade.ticker, { ...prev, qty: prev.qty - sellQty });
+        lots.set(key, { ...prev, qty: prev.qty - sellQty });
         break;
       }
     }
   }
 
-  // realized 원장은 sellEvents 합 + 배당에서 파생 — 이중 기록으로 인한 불일치를 원천 차단
-  const pnlByTicker = new Map<string, number>();
+  // 원장은 sellEvents 합에서 파생 — 이중 기록으로 인한 불일치를 원천 차단
+  const pnlByLot = new Map<string, number>();
+  const realizedByTicker = new Map<string, RealizedEntry>();
+  const addTickerLedger = (ticker: string, pnl: number, dividend: number): void => {
+    const prev = realizedByTicker.get(ticker) ?? { realizedPnl: 0, dividends: 0 };
+    realizedByTicker.set(ticker, {
+      realizedPnl: prev.realizedPnl + pnl,
+      dividends: prev.dividends + dividend,
+    });
+  };
   for (const event of sellEvents) {
-    pnlByTicker.set(event.ticker, (pnlByTicker.get(event.ticker) ?? 0) + event.pnl);
+    const key = lotKey(event.account, event.ticker);
+    pnlByLot.set(key, (pnlByLot.get(key) ?? 0) + event.pnl);
+    addTickerLedger(event.ticker, event.pnl, 0);
   }
-  const realized: Record<string, RealizedEntry> = Object.fromEntries(
-    [...new Set([...pnlByTicker.keys(), ...dividends.keys()])].map((ticker) => [
-      ticker,
-      { realizedPnl: pnlByTicker.get(ticker) ?? 0, dividends: dividends.get(ticker) ?? 0 },
-    ]),
-  );
+  for (const entry of dividendsByLot.values()) {
+    addTickerLedger(entry.ticker, 0, entry.amount);
+  }
 
   const positions: Position[] = [...lots.entries()]
     .filter(([, lot]) => lot.qty > EPSILON)
-    .map(([ticker, lot]) => {
-      const ledger = realized[ticker] ?? { realizedPnl: 0, dividends: 0 };
-      return {
-        ticker,
-        qty: lot.qty,
-        avgCost: lot.avgCost,
-        costBasis: lot.qty * lot.avgCost,
-        realizedPnl: ledger.realizedPnl,
-        dividends: ledger.dividends,
-        currency: lot.currency,
-      };
-    });
+    .map(([key, lot]) => ({
+      ticker: lot.ticker,
+      account: lot.account,
+      qty: lot.qty,
+      avgCost: lot.avgCost,
+      costBasis: lot.qty * lot.avgCost,
+      realizedPnl: pnlByLot.get(key) ?? 0,
+      dividends: dividendsByLot.get(key)?.amount ?? 0,
+      currency: lot.currency,
+    }));
+
+  const flatCash = new Map<string, number>();
+  for (const bucket of cashByAccount.values()) {
+    for (const [currency, amount] of bucket) {
+      flatCash.set(currency, (flatCash.get(currency) ?? 0) + amount);
+    }
+  }
 
   return {
     positions,
-    cash: Object.fromEntries(cash),
-    realized,
+    cash: Object.fromEntries(flatCash),
+    cashByAccount: Object.fromEntries(
+      [...cashByAccount.entries()].map(([account, bucket]) => [account, Object.fromEntries(bucket)]),
+    ),
+    realized: Object.fromEntries(realizedByTicker),
     sellEvents,
     warnings,
   };

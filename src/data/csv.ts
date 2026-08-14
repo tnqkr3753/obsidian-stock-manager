@@ -68,6 +68,7 @@ export function parseTradesCsv(text: string): CsvParseResult {
         type: "trade",
         date: record["date"],
         action: record["action"],
+        account: record["account"],
         ticker: record["ticker"],
         qty: record["qty"],
         price: record["price"],

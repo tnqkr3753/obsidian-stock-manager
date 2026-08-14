@@ -44,6 +44,12 @@ const COLUMNS: readonly Column[] = [
     total: (_rows, cell) => cell.setText("합계"),
   },
   {
+    key: "account",
+    label: "계좌",
+    sortValue: (r) => r.account,
+    render: (cell, row) => cell.setText(row.account),
+  },
+  {
     key: "tags",
     label: "태그",
     render: (cell, _row, tags) => {

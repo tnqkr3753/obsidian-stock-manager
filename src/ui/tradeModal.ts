@@ -1,4 +1,4 @@
-import { Modal, Notice, Setting } from "obsidian";
+import { AbstractInputSuggest, Modal, Notice, Setting, type App } from "obsidian";
 import type StockManagerPlugin from "../../main";
 import { parseTrade } from "../data/parse";
 import type { TradeAction } from "../domain/types";
@@ -19,6 +19,29 @@ const needsTicker = (a: TradeAction): boolean =>
   ["buy", "sell", "opening", "dividend"].includes(a);
 const needsQtyPrice = (a: TradeAction): boolean => ["buy", "sell", "opening"].includes(a);
 
+/** 계좌 입력 자동완성 — 기존 매매일지에 등장한 계좌명을 제안한다. */
+class AccountSuggest extends AbstractInputSuggest<string> {
+  constructor(
+    app: App,
+    private readonly el: HTMLInputElement,
+    private readonly accounts: readonly string[],
+  ) {
+    super(app, el);
+  }
+  getSuggestions(query: string): string[] {
+    const lower = query.toLowerCase();
+    return this.accounts.filter((a) => a.toLowerCase().includes(lower));
+  }
+  renderSuggestion(account: string, el: HTMLElement): void {
+    el.setText(account);
+  }
+  selectSuggestion(account: string): void {
+    this.el.value = account;
+    this.el.trigger("input");
+    this.close();
+  }
+}
+
 /** 매매 기록 입력 → 매매일지 노트 생성. 검증은 parseTrade를 그대로 재사용한다. */
 export class TradeModal extends Modal {
   private action: TradeAction = "buy";
@@ -28,6 +51,7 @@ export class TradeModal extends Modal {
   private price = "";
   private amount = "";
   private currency = "KRW";
+  private account = "";
   private tags = "";
   private memo = "";
   private checks: boolean[] = [];
@@ -58,6 +82,15 @@ export class TradeModal extends Modal {
     new Setting(contentEl).setName("날짜").addText((t) =>
       t.setValue(this.date).onChange((v) => (this.date = v)),
     );
+
+    new Setting(contentEl)
+      .setName("계좌")
+      .setDesc("비우면 '기본'. 예: ISA, 신한, 연금")
+      .addText((t) => {
+        t.setPlaceholder("기본").setValue(this.account).onChange((v) => (this.account = v.trim()));
+        const known = this.plugin.state?.accounts.map((a) => a.account) ?? [];
+        if (known.length > 0) new AccountSuggest(this.app, t.inputEl, known);
+      });
 
     if (needsTicker(this.action)) {
       new Setting(contentEl)
@@ -135,6 +168,7 @@ export class TradeModal extends Modal {
         type: "trade",
         date: this.date,
         action: this.action,
+        account: this.account || undefined,
         ticker: this.ticker || undefined,
         qty: this.qty || undefined,
         price: this.price || undefined,

@@ -46,6 +46,7 @@ export function valuePortfolio(input: ValuationInput): Valuation {
     const unrealizedPnl = marketValue - costBasis;
     return {
       ticker: pos.ticker,
+      account: pos.account,
       name: meta?.name ?? pos.ticker,
       assetClass: meta?.assetClass ?? "stock",
       currency: pos.currency,
