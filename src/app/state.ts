@@ -8,7 +8,7 @@ import { computeTagExposure } from "../domain/tags";
 import { toLocalDateString } from "../util/date";
 import type {
   FxMap,
-  MacroMemo,
+  Memo,
   PortfolioConfig,
   QuoteMap,
   RebalanceResult,
@@ -17,6 +17,7 @@ import type {
   Trade,
   Valuation,
 } from "../domain/types";
+import { organizeReviews, type ReviewRow } from "../domain/review";
 import { valuePortfolio } from "../domain/valuation";
 
 /** 워치리스트 한 행 — 시세가 붙고 목표가 도달 여부가 계산된 상태. */
@@ -38,7 +39,10 @@ export interface PortfolioState {
   tagExposure: readonly TagExposure[];
   rebalance: RebalanceResult;
   recentTrades: readonly Trade[];
-  recentMacros: readonly MacroMemo[];
+  trades: readonly Trade[]; // 전체 매매일지 — 리뷰 상세의 "그날의 Trades" 연결에 쓴다
+  recentMemos: readonly Memo[];
+  memos: readonly Memo[]; // 전체 메모 — 리뷰 상세의 연결 메모 조회에 쓴다
+  reviews: readonly ReviewRow[]; // 최신순 + superseded 계산 완료 (stock-review)
   watchRows: readonly WatchRow[];
   upcoming: readonly UpcomingEvent[]; // 다가오는 이벤트 (30일)
   cashflow: Cashflow; // 최근 6개월 입출금 + 누적 투입 원금
@@ -47,14 +51,16 @@ export interface PortfolioState {
   totalRealizedPnl: number; // 전 계좌·청산 종목 포함 총 실현손익 (KRW) — 살아있는 행 합계와 다를 수 있다
   todayPnl: number; // 당일 등락 기반 오늘 손익 (KRW)
   config: PortfolioConfig;
+  configPath?: string; // stock-config 노트 경로 — 목표 조정 버튼이 이 노트를 연다
   metas: Readonly<Record<string, StockMeta>>;
   tradeCount: number;
   warnings: readonly string[];
+  reviewErrors: readonly string[]; // 리뷰 노트 파싱 실패분 — Reviews 뷰에 표시
   lastUpdated?: number;
 }
 
 const RECENT_TRADES = 5;
-const RECENT_MACROS = 3;
+const RECENT_MEMOS = 3;
 const EVENT_HORIZON_DAYS = 30;
 const CASHFLOW_MONTHS = 6;
 
@@ -87,9 +93,8 @@ export function computeState(
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, RECENT_TRADES);
 
-  const recentMacros = [...snapshot.macros]
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    .slice(0, RECENT_MACROS);
+  const memos = [...snapshot.memos].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const recentMemos = memos.slice(0, RECENT_MEMOS);
 
   const watchRows: WatchRow[] = snapshot.watches.map((w) => {
     const quote = quotes[w.ticker];
@@ -123,7 +128,7 @@ export function computeState(
   const allEvents = [
     ...Object.values(snapshot.metas).flatMap((m) => m.events),
     ...snapshot.watches.flatMap((w) => w.events),
-    ...snapshot.macros.flatMap((m) => m.events),
+    ...snapshot.memos.flatMap((m) => m.events),
   ];
 
   return {
@@ -153,12 +158,17 @@ export function computeState(
       tolerance: tolerancePct / 100,
     }),
     recentTrades,
-    recentMacros,
+    trades: snapshot.trades,
+    recentMemos,
+    memos,
+    reviews: organizeReviews(snapshot.reviews),
     watchRows,
     todayPnl,
     config: snapshot.config,
+    configPath: snapshot.configPath,
     metas: snapshot.metas,
     tradeCount: snapshot.trades.length,
+    reviewErrors: snapshot.reviewErrors,
     warnings: [
       ...snapshot.errors,
       ...replay.warnings,

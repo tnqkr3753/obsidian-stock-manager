@@ -1,6 +1,7 @@
 import type {
   HoldingClass,
-  MacroMemo,
+  Memo,
+  MemoScope,
   PortfolioConfig,
   Result,
   StockMeta,
@@ -8,9 +9,19 @@ import type {
   TradeAction,
   WatchItem,
 } from "../domain/types";
-import { err, ok, TRADE_ACTIONS } from "../domain/types";
+import { err, MEMO_SCOPES, ok, TRADE_ACTIONS } from "../domain/types";
+import type { StockReview } from "../domain/review";
+import {
+  MARKET_REGIMES,
+  REVIEW_CONFIDENCES,
+  REVIEW_DATA_STATUSES,
+  REVIEW_HEALTHS,
+  REVIEW_RISK_LEVELS,
+  REVIEW_SESSIONS,
+} from "../domain/review";
 import { parseEventStrings } from "../domain/events";
 import { toLocalDateString } from "../util/date";
+import { noteBasename } from "../util/path";
 
 type Frontmatter = Record<string, unknown>;
 
@@ -112,19 +123,79 @@ export function parseStockMeta(fm: Frontmatter, path: string): Result<StockMeta>
   });
 }
 
-export function parseMacro(fm: Frontmatter, path: string): Result<MacroMemo> {
-  if (fm["type"] !== "macro") return err(`type이 macro가 아닙니다: ${path}`);
+/** "[[노트 이름|별칭]]" → "노트 이름". 위키링크가 아니면 그대로 반환. */
+const unwrapWikilink = (v: unknown): string | undefined => {
+  const s = asString(v);
+  if (!s) return undefined;
+  const inner = s.replace(/^\[\[/, "").replace(/\]\]$/, "");
+  return inner.split("|")[0]?.trim() || undefined;
+};
+
+/** 허용값 목록에 있는 값만 통과 — 오기재는 undefined로 낮춰 UI가 "—"를 보이게 한다. */
+const asEnum = <T extends string>(v: unknown, allowed: readonly T[]): T | undefined => {
+  const s = asString(v);
+  return s !== undefined && (allowed as readonly string[]).includes(s) ? (s as T) : undefined;
+};
+
+/** `type: memo` 노트. 구 `type: macro`(경제 메모)도 market 범위 메모로 읽는다. */
+export function parseMemo(fm: Frontmatter, path: string): Result<Memo> {
+  const legacy = fm["type"] === "macro";
+  if (fm["type"] !== "memo" && !legacy) return err(`type이 memo가 아닙니다: ${path}`);
 
   const date = asDateString(fm["date"]);
-  if (!date) return err(`경제 메모에 date가 없습니다: ${path}`);
+  if (!date) return err(`메모에 date가 없습니다: ${path}`);
 
-  const basename = path.split("/").pop()?.replace(/\.md$/, "") ?? path;
-  const title = asString(fm["title"]) ?? basename;
+  const scope: MemoScope = legacy ? "market" : (asEnum(fm["scope"], MEMO_SCOPES) ?? "market");
+  const ticker = asString(fm["ticker"]);
+  if (scope === "stock" && !ticker) {
+    return err(`scope: stock 메모에 ticker가 없습니다: ${path}`);
+  }
+
+  const title = asString(fm["title"]) ?? noteBasename(path);
   return ok({
     date,
     title,
+    scope,
+    ticker,
+    relatedReview: unwrapWikilink(fm["relatedReview"]),
     tags: asTags(fm["tags"]),
     events: parseEventStrings(Array.isArray(fm["events"]) ? fm["events"] : [], title),
+    path,
+  });
+}
+
+/**
+ * `type: stock-review` 노트 frontmatter (schemaVersion 1).
+ * 목록·배지에 필요한 필드만 올리고 본문은 해석하지 않는다.
+ * 필수는 date·session뿐 — 나머지 오기재는 unknown/미기재로 낮춰 목록에서 빠지지 않게 한다.
+ */
+export function parseReview(fm: Frontmatter, path: string): Result<StockReview> {
+  if (fm["type"] !== "stock-review") return err(`type이 stock-review가 아닙니다: ${path}`);
+
+  const date = asDateString(fm["date"]);
+  if (!date) return err(`리뷰에 date가 없습니다: ${path}`);
+
+  const session = asEnum(fm["session"], REVIEW_SESSIONS);
+  if (!session) {
+    return err(`지원하지 않는 session "${asString(fm["session"]) ?? ""}": ${path}`);
+  }
+
+  return ok({
+    reviewId: asString(fm["reviewId"]) ?? noteBasename(path),
+    schemaVersion: asNumber(fm["schemaVersion"]) ?? 1,
+    session,
+    date,
+    generatedAt: asString(fm["generatedAt"]),
+    portfolioAsOf: asString(fm["portfolioAsOf"]),
+    marketAsOf: asString(fm["marketAsOf"]),
+    dataStatus: asEnum(fm["dataStatus"], REVIEW_DATA_STATUSES),
+    health: asEnum(fm["health"], REVIEW_HEALTHS) ?? "unknown",
+    riskLevel: asEnum(fm["riskLevel"], REVIEW_RISK_LEVELS),
+    marketRegime: asEnum(fm["marketRegime"], MARKET_REGIMES) ?? "unknown",
+    confidence: asEnum(fm["confidence"], REVIEW_CONFIDENCES),
+    headline: asString(fm["headline"]) ?? "",
+    supersedes: asString(fm["supersedes"]),
+    tags: asTags(fm["tags"]),
     path,
   });
 }

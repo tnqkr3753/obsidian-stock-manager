@@ -16,12 +16,15 @@ import { replayTrades } from "./src/domain/replay";
 import { buildMonthlyReportMarkdown, computeMonthlyReport } from "./src/domain/report";
 import { PriceService, quoteTickers } from "./src/price/service";
 import { DEFAULT_DATA, type AssetSnapshot, type PersistedData } from "./src/settings";
+import type { ReviewRow } from "./src/domain/review";
 import { DashboardView, VIEW_TYPE_DASHBOARD } from "./src/ui/dashboardView";
 import { renderAllocation, renderHero, renderHoldings } from "./src/ui/render";
+import { ReviewsView, VIEW_TYPE_REVIEWS } from "./src/ui/reviewsView";
 import { TableView, VIEW_TYPE_TABLE } from "./src/ui/tableView";
 import { TradeModal } from "./src/ui/tradeModal";
 import { CsvImportModal } from "./src/ui/csvModal";
 import { toLocalDateString } from "./src/util/date";
+import { noteBasename } from "./src/util/path";
 
 const MAX_SNAPSHOTS = 730;
 
@@ -87,6 +90,7 @@ export default class StockManagerPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
     this.registerView(VIEW_TYPE_TABLE, (leaf) => new TableView(leaf, this));
+    this.registerView(VIEW_TYPE_REVIEWS, (leaf) => new ReviewsView(leaf, this));
     this.addRibbonIcon("trending-up", "주식 매니저 대시보드", () => void this.activateView(VIEW_TYPE_DASHBOARD, "right"));
 
     this.addCommand({
@@ -111,9 +115,20 @@ export default class StockManagerPlugin extends Plugin {
       callback: () => void this.refreshQuotes(),
     });
     this.addCommand({
+      // 구 "경제 메모 작성" — id를 유지해 기존 단축키가 깨지지 않게 한다
       id: "new-macro-memo",
-      name: "경제 메모 작성",
-      callback: () => void this.createMacroMemo(),
+      name: "메모 작성",
+      callback: () => void this.createMemo(),
+    });
+    this.addCommand({
+      id: "open-reviews",
+      name: "리뷰 보기 열기",
+      callback: () => void this.activateView(VIEW_TYPE_REVIEWS, "tab"),
+    });
+    this.addCommand({
+      id: "open-target-config",
+      name: "포트폴리오 목표 설정 열기",
+      callback: () => void this.openConfigNote(),
     });
     this.addCommand({
       id: "new-watch-note",
@@ -266,13 +281,49 @@ export default class StockManagerPlugin extends Plugin {
     new Notice("시세 갱신 완료");
   }
 
-  private async createMacroMemo(): Promise<void> {
+  async createMemo(): Promise<void> {
     try {
-      const file = await this.repository.createMacroNote(toLocalDateString());
+      const file = await this.repository.createMemoNote(toLocalDateString());
       this.openPath(file.path);
     } catch (e) {
-      new Notice(`경제 메모 생성에 실패했습니다: ${String(e)}`);
+      new Notice(`메모 생성에 실패했습니다: ${String(e)}`);
     }
+  }
+
+  /** "이 리뷰에 메모 남기기" — 리뷰 본문은 불변으로 두고 연결된 후속 메모를 만든다. */
+  async createReviewMemo(review: ReviewRow): Promise<void> {
+    const reviewName = review.path ? noteBasename(review.path) : review.reviewId;
+    try {
+      const file = await this.repository.createMemoNote(toLocalDateString(), {
+        scope: "portfolio",
+        relatedReview: reviewName,
+      });
+      this.openPath(file.path);
+    } catch (e) {
+      new Notice(`리뷰 메모 생성에 실패했습니다: ${String(e)}`);
+    }
+  }
+
+  /** 목표 배분(stock-config) 노트를 연다 — 없으면 기본 템플릿으로 만들어 연다. */
+  async openConfigNote(): Promise<void> {
+    // state.configPath는 파싱 성공본만 안다 — 로드 전이나 파싱 실패한 config 노트가 있어도
+    // 새로 만들면 기존 설정을 가리므로 vault를 직접 확인한다
+    const existing = this.repository.findConfigNotePath();
+    if (existing) {
+      this.openPath(existing);
+      return;
+    }
+    try {
+      const file = await this.repository.createConfigNote();
+      new Notice("목표 배분 노트를 만들었어요 — target 비율을 수정해보세요.");
+      this.openPath(file.path);
+    } catch (e) {
+      new Notice(`설정 노트 생성에 실패했습니다: ${String(e)}`);
+    }
+  }
+
+  async openReviewsView(): Promise<void> {
+    await this.activateView(VIEW_TYPE_REVIEWS, "tab");
   }
 
   private async createWatchNote(): Promise<void> {
@@ -336,10 +387,12 @@ export default class StockManagerPlugin extends Plugin {
   }
 
   private rerenderViews(): void {
-    for (const type of [VIEW_TYPE_DASHBOARD, VIEW_TYPE_TABLE]) {
+    for (const type of [VIEW_TYPE_DASHBOARD, VIEW_TYPE_TABLE, VIEW_TYPE_REVIEWS]) {
       for (const leaf of this.app.workspace.getLeavesOfType(type)) {
         const view = leaf.view;
-        if (view instanceof DashboardView || view instanceof TableView) view.render();
+        if (view instanceof DashboardView || view instanceof TableView || view instanceof ReviewsView) {
+          view.render();
+        }
       }
     }
     this.embeds.forEach((embed) => embed.render());
@@ -463,7 +516,7 @@ class StockManagerSettingTab extends PluginSettingTab {
 
     containerEl.createEl("p", {
       cls: "sm-basis",
-      text: "목표 배분·집중 경고 기준은 데이터 폴더의 stock-config 노트(frontmatter)에서 설정합니다.",
+      text: "목표 배분·집중 경고 기준은 stock-config 노트에서 설정합니다 — 대시보드 자산 구성 카드의 \"목표 조정\" 버튼이 노트를 열어줍니다 (없으면 생성).",
     });
   }
 }

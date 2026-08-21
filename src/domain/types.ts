@@ -152,10 +152,16 @@ export interface RebalanceResult {
   headline?: RebalanceEntry; // 가장 크게 초과보유된 자산군
 }
 
-/** 경제 메모 노트 (2차). 태그로 종목 태그와 연결된다. */
-export interface MacroMemo {
+export const MEMO_SCOPES = ["market", "portfolio", "stock"] as const;
+export type MemoScope = (typeof MEMO_SCOPES)[number];
+
+/** 메모 노트 (`type: memo`, 5차). 구 `type: macro`(경제 메모)도 market 범위 메모로 읽는다. */
+export interface Memo {
   date: string;
   title: string;
+  scope: MemoScope;
+  ticker?: string; // scope: stock일 때 필수
+  relatedReview?: string; // 연결된 리뷰 노트 이름 (위키링크 대괄호 제거)
   tags: readonly string[];
   events: readonly CalendarEvent[]; // FOMC 등 거시 일정
   path?: string;

@@ -6,7 +6,8 @@ import type { WatchItem } from "../src/domain/types";
 const snapshot = (watches: WatchItem[]): VaultSnapshot => ({
   trades: [],
   metas: {},
-  macros: [],
+  memos: [],
+  reviews: [],
   watches,
   config: {
     target: { stock: 0.6, bond: 0.2, cash: 0.2 },
@@ -15,6 +16,7 @@ const snapshot = (watches: WatchItem[]): VaultSnapshot => ({
     baseCurrency: "KRW",
   },
   errors: [],
+  reviewErrors: [],
 });
 
 const watch = (partial: Partial<WatchItem>): WatchItem => ({

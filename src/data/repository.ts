@@ -1,15 +1,19 @@
 import type { App, TFile } from "obsidian";
 import { normalizePath } from "obsidian";
-import type { MacroMemo, PortfolioConfig, StockMeta, Trade, WatchItem } from "../domain/types";
-import { parseConfig, parseMacro, parseStockMeta, parseTrade, parseWatch } from "./parse";
+import type { Memo, MemoScope, PortfolioConfig, StockMeta, Trade, WatchItem } from "../domain/types";
+import type { StockReview } from "../domain/review";
+import { parseConfig, parseMemo, parseReview, parseStockMeta, parseTrade, parseWatch } from "./parse";
 
 export interface VaultSnapshot {
   trades: readonly Trade[];
   metas: Readonly<Record<string, StockMeta>>;
-  macros: readonly MacroMemo[];
+  memos: readonly Memo[];
+  reviews: readonly StockReview[];
   watches: readonly WatchItem[];
   config: PortfolioConfig;
+  configPath?: string; // stock-config 노트 경로 — "목표 조정"이 이 노트를 연다
   errors: readonly string[];
+  reviewErrors: readonly string[]; // errors 중 stock-review 파싱 실패분 — Reviews 뷰가 따로 표시
 }
 
 /** YAML 큰따옴표 스칼라 이스케이프 — 따옴표·역슬래시·줄바꿈이 노트를 깨지 않게. */
@@ -40,10 +44,13 @@ export class VaultRepository {
   loadSnapshot(): VaultSnapshot {
     const trades: Trade[] = [];
     const metas: Record<string, StockMeta> = {};
-    const macros: MacroMemo[] = [];
+    const memos: Memo[] = [];
+    const reviews: StockReview[] = [];
     const watches: WatchItem[] = [];
     const errors: string[] = [];
+    const reviewErrors: string[] = [];
     let config = FALLBACK_CONFIG;
+    let configPath: string | undefined;
 
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!this.isWatched(file.path)) continue;
@@ -67,14 +74,27 @@ export class VaultRepository {
         }
         case "stock-config": {
           const r = parseConfig(fm);
-          if (r.ok) config = r.value;
+          if (r.ok) {
+            config = r.value;
+            configPath = file.path;
+          } else errors.push(r.error);
+          break;
+        }
+        // macro는 구 경제 메모 타입 — market 범위 메모로 계속 읽는다
+        case "macro":
+        case "memo": {
+          const r = parseMemo(fm, file.path);
+          if (r.ok) memos.push(r.value);
           else errors.push(r.error);
           break;
         }
-        case "macro": {
-          const r = parseMacro(fm, file.path);
-          if (r.ok) macros.push(r.value);
-          else errors.push(r.error);
+        case "stock-review": {
+          const r = parseReview(fm, file.path);
+          if (r.ok) reviews.push(r.value);
+          else {
+            errors.push(r.error);
+            reviewErrors.push(r.error);
+          }
           break;
         }
         case "watch": {
@@ -86,24 +106,71 @@ export class VaultRepository {
       }
     }
 
-    return { trades, metas, macros, watches, config, errors };
+    return { trades, metas, memos, reviews, watches, config, configPath, errors, reviewErrors };
   }
 
-  /** 오늘 날짜의 경제 메모 노트를 만들고 경로를 반환한다. 이미 있으면 번호를 붙인다. */
-  async createMacroNote(date: string): Promise<TFile> {
-    const folder = normalizePath(`${this.getRootFolder()}/Macro`);
+  /**
+   * 오늘 날짜의 메모 노트를 Memos 폴더에 만들고 경로를 반환한다. 이미 있으면 번호를 붙인다.
+   * relatedReview를 주면 해당 리뷰에 연결된 후속 메모가 된다 ("이 리뷰에 메모 남기기").
+   */
+  async createMemoNote(
+    date: string,
+    // scope: stock은 ticker 없이는 파서가 거부하는 노트가 되므로 생성 API에서 제외 (필요해지면 ticker와 함께 추가)
+    opts: { scope?: Exclude<MemoScope, "stock">; relatedReview?: string } = {},
+  ): Promise<TFile> {
+    const folder = normalizePath(`${this.getRootFolder()}/Memos`);
+    await this.ensureFolder(folder);
+    const scope = opts.scope ?? "market";
+    const content = [
+      "---",
+      "type: memo",
+      `date: ${date}`,
+      `scope: ${scope}`,
+      ...(opts.relatedReview
+        ? [`relatedReview: ${yamlString(`[[${opts.relatedReview}]]`)}`, "tags: [리뷰후속]"]
+        : ["tags: []"]),
+      "---",
+      "",
+      opts.relatedReview
+        ? "<!-- 리뷰를 읽고 든 생각·후속 판단을 남기세요. 리뷰 본문은 수정하지 않습니다. -->"
+        : "<!-- 금리·환율·실적 등 시장 메모. scope를 portfolio/stock으로 바꿔 범위를 좁힐 수 있어요. tags에 종목 태그와 같은 태그를 쓰면 서로 연결됩니다. -->",
+      "",
+    ].join("\n");
+    const base = opts.relatedReview ? `${date} 리뷰 메모` : `${date} 메모`;
+    return this.app.vault.create(await this.availablePath(folder, base), content);
+  }
+
+  /** 파싱 성공 여부와 무관하게 vault의 stock-config 노트 경로를 찾는다 — 중복 생성·기존 설정 가림 방지. */
+  findConfigNotePath(): string | undefined {
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (!this.isWatched(file.path)) continue;
+      if (this.app.metadataCache.getFileCache(file)?.frontmatter?.["type"] === "stock-config") {
+        return file.path;
+      }
+    }
+    return undefined;
+  }
+
+  /** 목표 배분(stock-config) 노트가 없을 때 기본 템플릿으로 생성한다. */
+  async createConfigNote(): Promise<TFile> {
+    const folder = normalizePath(this.getRootFolder());
     await this.ensureFolder(folder);
     const content = [
       "---",
-      "type: macro",
-      `date: ${date}`,
-      "tags: []",
+      "type: stock-config",
+      "target:",
+      "  stock: 60",
+      "  bond: 20",
+      "  cash: 20",
+      "concentrationLimit: 40",
+      "checklist: []",
       "---",
       "",
-      "<!-- 금리·환율·실적 등 시장 메모. tags에 종목 태그와 같은 태그를 쓰면 서로 연결됩니다. -->",
+      "<!-- target의 비율(%)을 바꾸면 자산 구성 카드의 목표·리밸런싱 제안이 바뀝니다. -->",
+      "<!-- checklist에 항목을 넣으면 매수 기록 시 확인 목록으로 표시됩니다. -->",
       "",
     ].join("\n");
-    return this.app.vault.create(await this.availablePath(folder, `${date} 경제 메모`), content);
+    return this.app.vault.create(await this.availablePath(folder, "포트폴리오 설정"), content);
   }
 
   /** 검색으로 고른 미등록 종목의 메타 노트를 자동 생성한다 (태그는 사용자가 추후 추가). */

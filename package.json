@@ -1,6 +1,6 @@
 {
   "name": "obsidian-stock-manager",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Toss-style stock portfolio manager for Obsidian — trade journal as the source of truth",
   "main": "main.js",
   "scripts": {

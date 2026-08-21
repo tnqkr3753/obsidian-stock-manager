@@ -18,6 +18,8 @@
   --sm-cash: #7048e8;
   --sm-warn-ink: #b45309;
   --sm-warn-soft: rgba(217, 119, 6, 0.13);
+  --sm-good: #0ca678;
+  --sm-good-soft: rgba(12, 166, 120, 0.12);
   --sm-line: var(--background-modifier-border);
 
   background: var(--sm-ground);
@@ -380,6 +382,78 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
 /* ── 종목 검색 자동완성 ───────────────── */
 .sm-ticker-suggestion .sm-nm { font-size: 0.9em; font-weight: 600; }
 .sm-ticker-suggestion .sm-sub { font-size: 0.78em; color: var(--text-faint); }
+
+/* ── 리뷰 배지 (오늘의 리뷰 · Reviews 뷰 공용) ── */
+.sm-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.sm-badge {
+  font-size: 0.72em;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.sm-badge-good { background: var(--sm-good-soft); color: var(--sm-good); }
+.sm-badge-warn { background: var(--sm-warn-soft); color: var(--sm-warn-ink); }
+.sm-badge-bad { background: var(--sm-up-soft); color: var(--sm-up); }
+.sm-badge-mute { background: var(--sm-card-sub); color: var(--sm-ink-2); }
+.sm-jdate-inline { font-size: 0.78em; color: var(--sm-ink-3); font-weight: 600; }
+
+/* ── 오늘의 리뷰 카드 ─────────────────── */
+.sm-review-list { display: flex; flex-direction: column; gap: 6px; }
+.sm-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 8px;
+  border-radius: 12px;
+}
+.sm-review-item.sm-clickable { cursor: pointer; }
+.sm-review-item.sm-clickable:hover { background: var(--sm-card-sub); }
+.sm-review-headline { font-size: 0.88em; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.sm-warn-text { color: var(--sm-warn-ink); }
+
+/* ── Reviews 조회 뷰 ──────────────────── */
+.sm-reviews-view { gap: 10px; }
+.sm-review-filters { gap: 8px; padding: 14px 18px; }
+.sm-filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sm-filter-label { font-size: 0.75em; font-weight: 700; color: var(--sm-ink-3); min-width: 34px; }
+.sm-review-filters .sm-fchip { background: var(--sm-card-sub); padding: 4px 10px; }
+.sm-review-filters .sm-fchip[aria-pressed="true"] { background: var(--sm-ink); color: var(--sm-card); }
+.sm-review-layout { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.sm-review-listpane { flex: 1 1 240px; min-width: 0; max-height: 70vh; overflow-y: auto; gap: 4px; }
+.sm-review-detail { flex: 2 1 380px; min-width: 0; }
+/* 행형 버튼 리셋 — 리뷰 목록 행과 연결 목록 행이 공유 */
+.sm-review-rowbtn,
+.sm-jrow-btn {
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+  color: var(--sm-ink);
+  width: 100%;
+  height: auto;
+}
+.sm-review-rowbtn:hover { background: var(--sm-card-sub); }
+.sm-review-rowbtn.sm-selected { background: var(--sm-accent-soft); }
+.sm-review-head { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.sm-review-title { font-size: 1.05em; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+.sm-review-linked {
+  background: var(--sm-card-sub);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sm-review-md { border-top: 1px solid var(--sm-line); padding-top: 10px; }
+.sm-review-md table { display: block; overflow-x: auto; max-width: 100%; }
+
+/* 키보드 접근 — 포커스 표시는 지우지 않는다 */
+.sm-view button:focus-visible,
+.sm-view [tabindex]:focus-visible {
+  outline: 2px solid var(--sm-accent);
+  outline-offset: 1px;
+}
 
 /* ── 코드블록 임베드 / 모달 ───────────── */
 .sm-embed { border-radius: 16px; }

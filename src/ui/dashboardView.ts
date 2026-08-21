@@ -10,8 +10,9 @@ import {
   renderHero,
   renderHoldings,
   renderJournal,
-  renderMacros,
+  renderMemos,
   renderTags,
+  renderTodayReview,
   renderTrend,
   renderWarnings,
   renderWatchlist,
@@ -70,19 +71,20 @@ export class DashboardView extends ItemView {
       });
     } else {
       const openPath = (path: string): void => this.plugin.openPath(path);
-      // 흐름 중심 배치: 자산이 어떻게 흘러왔는지(흐름·시장 비교·현금흐름·계좌) → 지금 구성 → 상세
+      // 흐름 중심 배치: 오늘의 판단(리뷰) → 자산이 어떻게 흘러왔는지 → 지금 구성 → 상세
       renderHero(root, state);
+      renderTodayReview(root, state, openPath, () => void this.plugin.openReviewsView());
       renderAssetFlow(root, this.plugin.assetFlow());
       renderTrend(root, this.plugin.snapshots(), this.plugin.benchmarkSeries());
       renderCashflow(root, state);
       renderAccounts(root, state);
-      renderAllocation(root, state);
+      renderAllocation(root, state, () => void this.plugin.openConfigNote());
       renderHoldings(root, state, openPath, () => void this.plugin.openTableView());
       renderTags(root, state);
       renderWatchlist(root, state, openPath);
       renderEvents(root, state);
       renderJournal(root, state, openPath);
-      renderMacros(root, state, openPath);
+      renderMemos(root, state, openPath, () => void this.plugin.createMemo());
       renderWarnings(root, state);
     }
 

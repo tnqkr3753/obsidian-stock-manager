@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseConfig, parseMacro, parseStockMeta, parseTrade, parseWatch } from "../src/data/parse";
+import {
+  parseConfig,
+  parseMemo,
+  parseReview,
+  parseStockMeta,
+  parseTrade,
+  parseWatch,
+} from "../src/data/parse";
 
 describe("parseTrade", () => {
   it("parses a valid buy frontmatter into a Trade", () => {
@@ -113,21 +120,140 @@ describe("parseStockMeta", () => {
   });
 });
 
-describe("parseMacro", () => {
-  it("parses a macro memo note with tags", () => {
-    const r = parseMacro(
+describe("parseMemo", () => {
+  it("parses a memo note with scope and tags", () => {
+    const r = parseMemo(
+      { type: "memo", date: "2026-08-21", scope: "portfolio", tags: ["리뷰후속"] },
+      "Stocks/Memos/2026-08-21 리뷰 후속.md",
+    );
+    expect(r.ok && r.value).toMatchObject({
+      date: "2026-08-21",
+      title: "2026-08-21 리뷰 후속",
+      scope: "portfolio",
+      tags: ["리뷰후속"],
+    });
+  });
+
+  it("still reads legacy macro notes as market-scope memos", () => {
+    const r = parseMemo(
       { type: "macro", date: "2026-08-10", tags: ["#금리", "반도체사이클"] },
       "Stocks/Macro/2026-08-10 FOMC.md",
     );
     expect(r.ok && r.value).toMatchObject({
       date: "2026-08-10",
       title: "2026-08-10 FOMC",
+      scope: "market",
       tags: ["금리", "반도체사이클"],
     });
   });
 
-  it("rejects a macro note without a date", () => {
-    expect(parseMacro({ type: "macro" }, "m.md").ok).toBe(false);
+  it("requires a ticker when scope is stock", () => {
+    expect(parseMemo({ type: "memo", date: "2026-08-21", scope: "stock" }, "m.md").ok).toBe(false);
+    const r = parseMemo(
+      { type: "memo", date: "2026-08-21", scope: "stock", ticker: "005930" },
+      "m.md",
+    );
+    expect(r.ok && r.value.ticker).toBe("005930");
+  });
+
+  it("unwraps a wikilinked relatedReview to the note name", () => {
+    const r = parseMemo(
+      {
+        type: "memo",
+        date: "2026-08-21",
+        scope: "portfolio",
+        relatedReview: "[[2026-08-21 1800 evening]]",
+      },
+      "m.md",
+    );
+    expect(r.ok && r.value.relatedReview).toBe("2026-08-21 1800 evening");
+  });
+
+  it("defaults an unknown scope to market", () => {
+    const r = parseMemo({ type: "memo", date: "2026-08-21", scope: "잘못됨" }, "m.md");
+    expect(r.ok && r.value.scope).toBe("market");
+  });
+
+  it("rejects a memo note without a date", () => {
+    expect(parseMemo({ type: "memo" }, "m.md").ok).toBe(false);
+  });
+});
+
+describe("parseReview", () => {
+  const base = {
+    type: "stock-review",
+    schemaVersion: 1,
+    reviewId: "20260821-0800-morning",
+    session: "morning",
+    date: "2026-08-21",
+    generatedAt: "2026-08-21T08:00:00+09:00",
+    portfolioAsOf: "2026-08-21T07:55:00+09:00",
+    marketAsOf: "2026-08-21T07:50:00+09:00",
+    dataStatus: "complete",
+    health: "watch",
+    riskLevel: "high",
+    marketRegime: "risk-off",
+    confidence: "medium",
+    headline: "시장 약세와 특정 종목 집중 위험으로 방어적 관찰이 필요함",
+    tags: ["daily-review", "morning"],
+  };
+
+  it("parses a full schemaVersion 1 review frontmatter", () => {
+    const r = parseReview(base, "Stocks/Reviews/2026-08/2026-08-21 0800 morning.md");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value).toMatchObject({
+        reviewId: "20260821-0800-morning",
+        session: "morning",
+        date: "2026-08-21",
+        dataStatus: "complete",
+        health: "watch",
+        riskLevel: "high",
+        marketRegime: "risk-off",
+        confidence: "medium",
+        headline: "시장 약세와 특정 종목 집중 위험으로 방어적 관찰이 필요함",
+        path: "Stocks/Reviews/2026-08/2026-08-21 0800 morning.md",
+      });
+      expect(r.value.supersedes).toBeUndefined();
+    }
+  });
+
+  it("keeps the supersedes link for reruns", () => {
+    const r = parseReview(
+      { ...base, reviewId: "20260821-0800-morning-r2", supersedes: "20260821-0800-morning" },
+      "r.md",
+    );
+    expect(r.ok && r.value.supersedes).toBe("20260821-0800-morning");
+  });
+
+  it("falls back to the basename when reviewId is missing", () => {
+    const { reviewId: _omit, ...noId } = base;
+    const r = parseReview(noId, "Stocks/Reviews/2026-08/2026-08-21 0800 morning.md");
+    expect(r.ok && r.value.reviewId).toBe("2026-08-21 0800 morning");
+  });
+
+  it("rejects an unknown session and a missing date", () => {
+    expect(parseReview({ ...base, session: "midnight" }, "r.md").ok).toBe(false);
+    expect(parseReview({ ...base, date: undefined }, "r.md").ok).toBe(false);
+  });
+
+  it("degrades invalid enum values instead of dropping the review", () => {
+    const r = parseReview(
+      { ...base, dataStatus: "great", health: "fine", riskLevel: "extreme", marketRegime: "bull", confidence: "sure" },
+      "r.md",
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.dataStatus).toBeUndefined();
+      expect(r.value.health).toBe("unknown");
+      expect(r.value.riskLevel).toBeUndefined();
+      expect(r.value.marketRegime).toBe("unknown");
+      expect(r.value.confidence).toBeUndefined();
+    }
+  });
+
+  it("rejects notes of a different type", () => {
+    expect(parseReview({ type: "memo" }, "r.md").ok).toBe(false);
   });
 });
 

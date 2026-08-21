@@ -76,18 +76,60 @@ concentrationLimit: 40
 ---
 ```
 
-### 경제 메모 (`type: macro`) — 2차
+대시보드 "자산 구성" 카드의 **목표 조정** 버튼(또는 커맨드 "포트폴리오 목표 설정 열기")이
+이 노트를 열어주고, 없으면 기본 템플릿으로 만들어줍니다.
+
+### 메모 (`type: memo`) — 5차 (구 `type: macro` 경제 메모 포함)
 
 ```markdown
 ---
-type: macro
-date: 2026-08-10
+type: memo
+date: 2026-08-21
+scope: market              # market | portfolio | stock (stock이면 ticker 필수)
+ticker:
+relatedReview: "[[2026-08-21 1800 evening]]"   # 리뷰 후속 메모일 때
 tags: [금리, 반도체사이클]   # 종목 태그와 같은 태그를 쓰면 서로 연결됨
 ---
 FOMC 금리 동결. 반도체 업황 코멘트 긍정적.
 ```
 
-커맨드 "경제 메모 작성"으로 오늘 날짜 템플릿 생성. 대시보드에 최근 3건 표시.
+대시보드 "메모" 카드의 **＋ 작성** 버튼(또는 커맨드 "메모 작성")으로 `Memos/` 폴더에 생성.
+대시보드에 최근 3건 표시. 구 `type: macro` 노트도 market 범위 메모로 계속 읽힙니다.
+
+### 리뷰 (`type: stock-review`) — 5차
+
+AI가 생성한 **불변 평가 기록**. 플러그인은 조회만 하고, 목록·배지는 frontmatter만 파싱하며
+본문은 Markdown 그대로 렌더링합니다 (본문을 정규식으로 재해석하지 않음).
+
+저장 경로: `Stocks/Reviews/YYYY-MM/YYYY-MM-DD HHmm <session>.md`
+같은 세션 재실행은 덮어쓰지 않고 `-r2`, `-r3` 파일에 `supersedes: <이전 reviewId>`로 연결.
+
+```markdown
+---
+type: stock-review
+schemaVersion: 1
+reviewId: "20260821-0800-morning"
+session: morning            # morning | evening | weekly | monthly | on-demand
+date: 2026-08-21
+generatedAt: "2026-08-21T08:00:00+09:00"
+portfolioAsOf: "2026-08-21T07:55:00+09:00"
+marketAsOf: "2026-08-21T07:50:00+09:00"
+dataStatus: complete        # complete | partial | failed
+health: watch               # healthy | watch | at-risk | unknown
+riskLevel: high             # low | medium | high | critical
+marketRegime: risk-off      # risk-on | neutral | risk-off | unknown
+confidence: medium          # low | medium | high
+headline: "시장 약세와 특정 종목 집중 위험으로 방어적 관찰이 필요함"
+supersedes:
+tags: [daily-review, morning]
+---
+```
+
+- 대시보드 "오늘의 리뷰" 카드: 오전·저녁 리뷰의 headline·상태·위험·국면·데이터 배지와 기준 시각
+- "리뷰 보기 열기" 커맨드(대시보드 "전체 보기 →"): 기간·세션·상태·위험·데이터 필터 + 최신순 목록 +
+  본문 상세, 그날의 매매·연결 메모로 이동, **＋ 이 리뷰에 메모 남기기** 버튼
+- 재실행으로 대체된 리뷰는 "재실행으로 대체됨" 배지, 파싱 실패 노트는 오류 카드로 표시
+- date·session만 필수 — 나머지 필드 오기재는 미상/미기재로 낮춰 목록에서 빠지지 않음
 
 ### 워치리스트 (`type: watch`) — 2차
 
@@ -113,7 +155,7 @@ currency: USD
 
 ### 이벤트 캘린더 — 3차
 
-stock/watch/macro 노트의 frontmatter에 `events: ["YYYY-MM-DD 제목", ...]`을 적으면
+stock/watch/memo 노트의 frontmatter에 `events: ["YYYY-MM-DD 제목", ...]`을 적으면
 대시보드 "다가오는 이벤트" 카드에 D-day와 함께 표시됩니다 (30일 이내, D-3부터 강조).
 
 ### 벤치마크 비교 — 3차
@@ -159,6 +201,7 @@ npm run build     # 타입체크 + 번들
 
 ## 이력
 
+- 2026-08-21 v0.5.0 — 5차: 메모 개편(`type: memo`, Memos 폴더, scope·리뷰 연결, 카드 상시 노출 + 작성 버튼), AI 리뷰 조회(`type: stock-review` — 오늘의 리뷰 카드, 필터·목록·본문 상세 뷰, 리뷰 메모 남기기), 목표 배분 조정 진입점(자산 구성 카드 버튼 + stock-config 노트 자동 생성), DESIGN.md 디자인 계약 명문화
 - 2026-08-14 v0.4.0 — 4차: 계좌 구분(계좌별 평단·현금·자산 카드·테이블 열), 자산 흐름 카드(총자산 vs 투입 원금), 대시보드 흐름 중심 재배치, 상세 테이블 진입 버튼
 - 2026-08-14 v0.3.1 — 종목 검색 자동완성 (회사명 → 코드·통화, 종목 노트 자동 생성)
 - 2026-08-13 v0.3.0 — 3차: 벤치마크 오버레이(지수화 비교), 이벤트 캘린더, 매수 체크리스트, 현금흐름 카드, 스냅샷 vault 이전(다기기 일관성)

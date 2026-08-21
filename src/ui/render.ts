@@ -1,7 +1,10 @@
 import type { PortfolioState } from "../app/state";
 import type { AssetFlow } from "../domain/assetFlow";
 import { buildOverlay, type BenchSeries } from "../domain/benchmark";
+import { latestBySession, REVIEW_SESSIONS, type ReviewRow } from "../domain/review";
+import type { Trade } from "../domain/types";
 import type { AssetSnapshot } from "../settings";
+import { toLocalDateString } from "../util/date";
 import {
   formatCompactKrw,
   formatKrw,
@@ -18,7 +21,7 @@ import {
 export type OpenPath = (path: string) => void;
 
 const CLASS_LABEL = { stock: "주식", bond: "채권", cash: "현금" } as const;
-const ACTION_LABEL: Record<string, string> = {
+export const ACTION_LABEL: Record<string, string> = {
   buy: "매수",
   sell: "매도",
   opening: "기초",
@@ -27,6 +30,14 @@ const ACTION_LABEL: Record<string, string> = {
   withdraw: "출금",
 };
 
+/** 매매 한 건의 상세 문자열 — 수량×단가, 없으면 금액(배당·입출금). 저널·리뷰 뷰 공용. */
+export const tradeDetailText = (trade: Trade): string =>
+  trade.qty !== undefined && trade.price !== undefined
+    ? `${formatQty(trade.qty)}주 × ${formatNative(trade.price, trade.currency)}`
+    : trade.amount !== undefined
+      ? formatNative(trade.amount, trade.currency)
+      : "";
+
 const card = (parent: HTMLElement): HTMLElement => parent.createDiv({ cls: "sm-card" });
 
 const cardHead = (parent: HTMLElement, title: string): HTMLElement => {
@@ -34,6 +45,85 @@ const cardHead = (parent: HTMLElement, title: string): HTMLElement => {
   head.createEl("h2", { text: title });
   return head;
 };
+
+/** 카드 헤더 우측 끝에 텍스트 링크 버튼을 단다 (DESIGN.md의 sm-textlink 문법). */
+const headAction = (head: HTMLElement, label: string, onClick: () => void): void => {
+  const spacer = head.createSpan();
+  spacer.style.flex = "1";
+  const btn = head.createEl("button", { cls: "sm-textlink", text: label });
+  btn.onClickEvent(onClick);
+};
+
+// ── 리뷰(stock-review) 배지 문법 — 대시보드 카드와 Reviews 뷰가 공유 ──
+export const SESSION_LABEL: Record<string, string> = {
+  morning: "오전",
+  evening: "저녁",
+  weekly: "주간",
+  monthly: "월간",
+  "on-demand": "수시",
+};
+
+type BadgeTone = "good" | "warn" | "bad" | "mute";
+
+const HEALTH_BADGE: Record<string, [string, BadgeTone]> = {
+  healthy: ["양호", "good"],
+  watch: ["관찰", "warn"],
+  "at-risk": ["위험신호", "bad"],
+  unknown: ["상태 미상", "mute"],
+};
+const RISK_BADGE: Record<string, [string, BadgeTone]> = {
+  low: ["위험 낮음", "good"],
+  medium: ["위험 보통", "mute"],
+  high: ["위험 높음", "warn"],
+  critical: ["위험 심각", "bad"],
+};
+const REGIME_BADGE: Record<string, [string, BadgeTone]> = {
+  "risk-on": ["위험선호", "good"],
+  neutral: ["중립", "mute"],
+  "risk-off": ["위험회피", "warn"],
+  unknown: ["국면 미상", "mute"],
+};
+const DATA_BADGE: Record<string, [string, BadgeTone]> = {
+  complete: ["데이터 완전", "mute"],
+  partial: ["일부 데이터", "warn"],
+  failed: ["데이터 실패", "bad"],
+};
+
+const badge = (parent: HTMLElement, label: string, tone: BadgeTone): void => {
+  parent.createSpan({ cls: `sm-badge sm-badge-${tone}`, text: label });
+};
+
+/** health·riskLevel·marketRegime·dataStatus 배지 한 줄. 미기재 필드는 그리지 않는다. */
+export function renderReviewBadges(parent: HTMLElement, review: ReviewRow): void {
+  const row = parent.createDiv({ cls: "sm-badges" });
+  const health = HEALTH_BADGE[review.health];
+  if (health) badge(row, health[0], health[1]);
+  const risk = review.riskLevel ? RISK_BADGE[review.riskLevel] : undefined;
+  if (risk) badge(row, risk[0], risk[1]);
+  const regime = REGIME_BADGE[review.marketRegime];
+  if (regime) badge(row, regime[0], regime[1]);
+  const data = review.dataStatus ? DATA_BADGE[review.dataStatus] : undefined;
+  if (data) badge(row, data[0], data[1]);
+  if (review.superseded) badge(row, "재실행으로 대체됨", "mute");
+}
+
+/** ISO 문자열 → HH:mm. 파싱 불가면 표시하지 않는다. */
+const asOfTime = (iso?: string): string | undefined => {
+  if (!iso) return undefined;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? formatTime(t) : undefined;
+};
+
+/** "포트폴리오 07:55 · 시장 07:50 기준" 형태의 기준 시각 문자열. */
+export function reviewBasisText(review: ReviewRow): string | undefined {
+  const parts = [
+    ...(asOfTime(review.portfolioAsOf) ? [`포트폴리오 ${asOfTime(review.portfolioAsOf)}`] : []),
+    ...(asOfTime(review.marketAsOf) ? [`시장 ${asOfTime(review.marketAsOf)}`] : []),
+  ];
+  if (parts.length > 0) return `${parts.join(" · ")} 기준`;
+  const generated = asOfTime(review.generatedAt);
+  return generated ? `${generated} 생성` : undefined;
+}
 
 export function renderHero(parent: HTMLElement, state: PortfolioState): void {
   const el = card(parent);
@@ -230,9 +320,15 @@ export function renderTrend(
   }
 }
 
-export function renderAllocation(parent: HTMLElement, state: PortfolioState): void {
+export function renderAllocation(
+  parent: HTMLElement,
+  state: PortfolioState,
+  onEditTarget?: () => void,
+): void {
   const el = card(parent);
-  cardHead(el, "자산 구성");
+  const head = cardHead(el, "자산 구성");
+  // 목표 배분은 stock-config 노트로만 조정 가능했는데 진입점이 없었다 — 여기서 노트를 연다/만든다
+  if (onEditTarget) headAction(head, "목표 조정", onEditTarget);
   const { allocation } = state.valuation;
 
   const bar = el.createDiv({ cls: "sm-alloc-bar" });
@@ -309,12 +405,7 @@ export function renderHoldings(
   const el = card(parent);
   const head = cardHead(el, "보유 종목");
   head.createSpan({ cls: "sm-count sm-num", text: String(state.valuation.rows.length) });
-  if (openTable) {
-    const spacer = head.createSpan();
-    spacer.style.flex = "1";
-    const btn = head.createEl("button", { cls: "sm-textlink", text: "상세 테이블 →" });
-    btn.onClickEvent(() => openTable());
-  }
+  if (openTable) headAction(head, "상세 테이블 →", openTable);
 
   const multiAccount = state.accounts.length > 1;
   const list = el.createDiv({ cls: "sm-holding-list sm-num" });
@@ -413,23 +504,89 @@ export function renderWatchlist(
   }
 }
 
-export function renderMacros(
+const MEMO_SCOPE_LABEL: Record<string, string> = { portfolio: "포트폴리오", stock: "종목" };
+
+/** 오늘의 리뷰 — AI 평가 기록(stock-review)의 세션별 최신본 요약. 진입점 카드라 비어 있어도 그린다. */
+export function renderTodayReview(
   parent: HTMLElement,
   state: PortfolioState,
   openPath: OpenPath,
+  openReviews?: () => void,
 ): void {
-  if (state.recentMacros.length === 0) return;
   const el = card(parent);
-  cardHead(el, "경제 메모");
+  const head = cardHead(el, "오늘의 리뷰");
+  if (openReviews && state.reviews.length > 0) headAction(head, "전체 보기 →", openReviews);
+
+  if (state.reviews.length === 0) {
+    el.createDiv({ cls: "sm-basis", text: "아직 리뷰가 없어요. Stocks/Reviews 폴더에 stock-review 노트가 생기면 여기 표시됩니다." });
+    return;
+  }
+
+  // 오늘은 렌더 시점 기준 — computeState 시점 값이면 자정 넘긴 뒤 어제 리뷰를 오늘로 보인다
+  const today = toLocalDateString();
+  const todays = latestBySession(state.reviews, today);
+  // 세션 진행 순서대로, 오늘 있는 것만
+  const rows = REVIEW_SESSIONS.map((s) => todays[s]).filter((r): r is ReviewRow => r !== undefined);
+
+  // 오늘 리뷰가 없으면 가장 최근 리뷰 하나를 날짜와 함께 보여준다
+  const fallback = state.reviews.find((r) => !r.superseded);
+  const display = rows.length > 0 ? rows : fallback ? [fallback] : [];
+  if (display.length === 0) return;
+
+  const list = el.createDiv({ cls: "sm-review-list" });
+  for (const review of display) {
+    const item = list.createDiv({ cls: "sm-review-item" });
+    if (review.path) {
+      item.addClass("sm-clickable");
+      item.setAttribute("tabindex", "0");
+      item.setAttribute("role", "button");
+      item.onClickEvent(() => openPath(review.path!));
+      item.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault(); // Space의 페이지 스크롤 기본 동작 억제
+          openPath(review.path!);
+        }
+      });
+    }
+    const line = item.createDiv({ cls: "sm-jline" });
+    line.createSpan({ cls: "sm-act sm-act-deposit", text: SESSION_LABEL[review.session] ?? review.session });
+    if (review.date !== today) {
+      line.createSpan({ cls: "sm-jdate-inline", text: review.date.slice(5).replace("-", ".") });
+    }
+    item.createDiv({ cls: "sm-review-headline", text: review.headline || "(headline 없음)" });
+    renderReviewBadges(item, review);
+    const basis = reviewBasisText(review);
+    if (basis) item.createDiv({ cls: "sm-basis", text: basis });
+  }
+}
+
+/** 메모 카드 — 진입점 역할이라 비어 있어도 그리고, 헤더에서 바로 작성한다. */
+export function renderMemos(
+  parent: HTMLElement,
+  state: PortfolioState,
+  openPath: OpenPath,
+  onCreate?: () => void,
+): void {
+  const el = card(parent);
+  const head = cardHead(el, "메모");
+  if (onCreate) headAction(head, "＋ 작성", onCreate);
+
+  if (state.recentMemos.length === 0) {
+    el.createDiv({ cls: "sm-basis", text: "금리·환율 같은 시장 메모나 투자 생각을 남겨보세요." });
+    return;
+  }
 
   const list = el.createDiv({ cls: "sm-journal sm-num" });
-  for (const memo of state.recentMacros) {
+  for (const memo of state.recentMemos) {
     const row = list.createDiv({ cls: "sm-jrow" });
     if (memo.path) row.onClickEvent(() => openPath(memo.path!));
     row.createSpan({ cls: "sm-jdate", text: memo.date.slice(5).replace("-", ".") });
 
     const body = row.createDiv({ cls: "sm-jbody" });
-    body.createDiv({ cls: "sm-jline" }).createSpan({ cls: "sm-jnm", text: memo.title });
+    const line = body.createDiv({ cls: "sm-jline" });
+    line.createSpan({ cls: "sm-jnm", text: memo.title });
+    const scopeLabel = memo.scope === "stock" ? memo.ticker : MEMO_SCOPE_LABEL[memo.scope];
+    if (scopeLabel) line.createSpan({ cls: "sm-jtag", text: scopeLabel });
     if (memo.tags.length > 0) {
       const tags = body.createDiv({ cls: "sm-jtags" });
       memo.tags.forEach((t) => tags.createSpan({ cls: "sm-jtag", text: `#${t}` }));
@@ -458,12 +615,7 @@ export function renderJournal(
     const name = trade.ticker ? (state.names[trade.ticker] ?? trade.ticker) : "현금";
     line.createSpan({ cls: "sm-jnm", text: name });
 
-    const detail =
-      trade.qty !== undefined && trade.price !== undefined
-        ? `${formatQty(trade.qty)}주 × ${formatNative(trade.price, trade.currency)}`
-        : trade.amount !== undefined
-          ? formatNative(trade.amount, trade.currency)
-          : "";
+    const detail = tradeDetailText(trade);
     if (detail) body.createDiv({ cls: "sm-jdetail", text: detail });
 
     if (trade.tags && trade.tags.length > 0) {
@@ -498,7 +650,7 @@ export function renderEvents(
   }
   el.createDiv({
     cls: "sm-foot",
-    text: "종목·워치·경제 메모 노트의 events 항목에서 수집 (30일 이내)",
+    text: "종목·워치·메모 노트의 events 항목에서 수집 (30일 이내)",
   });
 }
 
