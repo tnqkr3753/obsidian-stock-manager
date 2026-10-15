@@ -18,10 +18,11 @@ const EPSILON = 1e-9;
 const SAME_DATE_ORDER: Record<Trade["action"], number> = {
   opening: 0,
   deposit: 1,
-  buy: 2,
-  dividend: 3,
-  sell: 4,
-  withdraw: 5,
+  exchange: 2, // 환전 후 같은 날 외화 매수가 가능하도록 매수보다 먼저
+  buy: 3,
+  dividend: 4,
+  sell: 5,
+  withdraw: 6,
 };
 
 const lotKey = (account: string, ticker: string): string => `${account}\u0000${ticker}`;
@@ -29,7 +30,7 @@ const lotKey = (account: string, ticker: string): string => `${account}\u0000${t
 /**
  * 매매일지 리플레이 — 보유량·평단·실현손익·배당·현금을 전부 일지에서 파생한다.
  * lot은 계좌+종목 단위: 같은 종목이라도 계좌(ISA·신한 등)가 다르면 평단·보유량이 분리된다.
- * opening은 기존 보유 스냅샷이므로 현금에 영향을 주지 않고, buy/sell/배당/입출금만 현금을 움직인다.
+ * opening은 기존 보유 스냅샷이므로 현금에 영향을 주지 않고, buy/sell/배당/입출금/환전만 현금을 움직인다.
  * 데이터 오류(과매도·통화 불일치 등)는 던지지 않고 경고로 수집해 대시보드가 항상 그려지게 한다.
  */
 export function replayTrades(trades: readonly Trade[]): ReplayResult {
@@ -64,6 +65,15 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
         break;
       case "withdraw":
         addCash(account, currency, -(trade.amount ?? 0));
+        break;
+      case "exchange":
+        // 계좌 안에서 통화만 바뀐다 — 외부 자금 흐름(원금)이 아니다
+        if (!trade.toCurrency || !trade.amount || !trade.toAmount) {
+          warnings.push(`환전 기록에 금액/받은 통화가 없습니다: ${where(trade)}`);
+          break;
+        }
+        addCash(account, currency, -trade.amount);
+        addCash(account, trade.toCurrency, trade.toAmount);
         break;
       case "dividend": {
         if (!trade.ticker || !trade.amount) {

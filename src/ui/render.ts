@@ -28,11 +28,14 @@ export const ACTION_LABEL: Record<string, string> = {
   dividend: "배당",
   deposit: "입금",
   withdraw: "출금",
+  exchange: "환전",
 };
 
 /** 매매 한 건의 상세 문자열 — 수량×단가, 없으면 금액(배당·입출금). 저널·리뷰 뷰 공용. */
 export const tradeDetailText = (trade: Trade): string =>
-  trade.qty !== undefined && trade.price !== undefined
+  trade.action === "exchange" && trade.amount !== undefined && trade.toAmount !== undefined
+    ? `${formatNative(trade.amount, trade.currency)} → ${formatNative(trade.toAmount, trade.toCurrency ?? "")}`
+    : trade.qty !== undefined && trade.price !== undefined
     ? `${formatQty(trade.qty)}주 × ${formatNative(trade.price, trade.currency)}`
     : trade.amount !== undefined
       ? formatNative(trade.amount, trade.currency)

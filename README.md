@@ -36,7 +36,7 @@ cp main.js manifest.json styles.css <vault>/.obsidian/plugins/stock-manager/
 ---
 type: trade
 date: 2026-08-12
-action: buy        # buy | sell | opening | dividend | deposit | withdraw
+action: buy        # buy | sell | opening | dividend | deposit | withdraw | exchange
 ticker: "005930"
 qty: 10
 price: 71000
@@ -48,6 +48,7 @@ tags: [원칙매수, 분할매수]   # 회고 태그
 
 - `opening`: 플러그인 도입 전 기초 보유. 평단 계산에는 반영되고 현금은 움직이지 않는다.
 - `dividend`: `ticker` + `amount`. `deposit`/`withdraw`: `amount`(+`currency`).
+- `exchange`(환전): 내준 `amount`+`currency`, 받은 `toAmount`+`toCurrency`. 같은 계좌 안 현금만 옮기며 투입 원금·순입출금에는 잡히지 않는다.
 - `account`: 계좌 구분(ISA, 신한, 연금 등). 생략 시 `기본`. **계좌별로 평단·보유량·현금이 분리**되고,
   계좌가 2개 이상이면 대시보드에 계좌별 자산 카드가 나타난다. CSV에도 `account` 열 사용 가능.
 

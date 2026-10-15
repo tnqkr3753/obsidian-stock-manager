@@ -38,7 +38,8 @@ function splitCsvLine(line: string): string[] {
 }
 
 /**
- * 증권사 거래내역 CSV → Trade 목록. 헤더: date, action(필수), ticker, qty, price, currency, amount, tags.
+ * 증권사 거래내역 CSV → Trade 목록. 헤더: date, action(필수), ticker, qty, price, currency, amount, tags,
+ * 환전은 toCurrency, toAmount (헤더 대소문자 무관).
  * 잘못된 행은 건너뛰고 "N행: 사유" 형식으로 수집한다 (N은 데이터 행 기준 1부터).
  */
 export function parseTradesCsv(text: string): CsvParseResult {
@@ -74,6 +75,8 @@ export function parseTradesCsv(text: string): CsvParseResult {
         price: record["price"],
         currency: record["currency"],
         amount: record["amount"],
+        toCurrency: record["tocurrency"],
+        toAmount: record["toamount"],
         tags: record["tags"] ? record["tags"].split(";") : [],
       },
       `CSV ${index + 1}행`,

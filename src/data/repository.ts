@@ -1,6 +1,14 @@
 import type { App, TFile } from "obsidian";
 import { normalizePath } from "obsidian";
-import type { Memo, MemoScope, PortfolioConfig, StockMeta, Trade, WatchItem } from "../domain/types";
+import type {
+  HoldingClass,
+  Memo,
+  MemoScope,
+  PortfolioConfig,
+  StockMeta,
+  Trade,
+  WatchItem,
+} from "../domain/types";
 import type { StockReview } from "../domain/review";
 import { parseConfig, parseMemo, parseReview, parseStockMeta, parseTrade, parseWatch } from "./parse";
 
@@ -173,13 +181,14 @@ export class VaultRepository {
     return this.app.vault.create(await this.availablePath(folder, "포트폴리오 설정"), content);
   }
 
-  /** 검색으로 고른 미등록 종목의 메타 노트를 자동 생성한다 (태그는 사용자가 추후 추가). */
+  /** 미등록 종목의 메타 노트를 자동 생성한다 (태그는 사용자가 추후 추가). */
   async createStockNote(hit: {
     ticker: string;
     name: string;
     market?: string;
     currency?: string;
     yahooSymbol?: string;
+    assetClass?: HoldingClass;
   }): Promise<TFile> {
     const folder = normalizePath(`${this.getRootFolder()}/Stocks`);
     await this.ensureFolder(folder);
@@ -190,13 +199,14 @@ export class VaultRepository {
       `name: ${yamlString(hit.name)}`,
       ...(hit.market ? [`market: ${yamlString(hit.market)}`] : []),
       `currency: ${hit.currency ?? "KRW"}`,
+      ...(hit.assetClass === "bond" ? ["assetClass: bond"] : []),
       ...(hit.yahooSymbol && hit.yahooSymbol !== hit.ticker
         ? [`yahooSymbol: ${yamlString(hit.yahooSymbol)}`]
         : []),
       "tags: []",
       "---",
       "",
-      "<!-- 종목 검색으로 자동 생성됨. tags에 태그를 달면 태그 노출 분석에 반영됩니다. -->",
+      "<!-- 매매 기록 시 자동 생성됨. tags에 태그를 달면 태그 노출 분석에, assetClass: bond면 채권 비중에 반영됩니다. -->",
       "",
     ].join("\n");
     return this.app.vault.create(await this.availablePath(folder, hit.name), content);
@@ -245,6 +255,8 @@ export class VaultRepository {
       ...(trade.price !== undefined ? [`price: ${trade.price}`] : []),
       ...(trade.amount !== undefined ? [`amount: ${trade.amount}`] : []),
       `currency: ${trade.currency}`,
+      ...(trade.toCurrency ? [`toCurrency: ${trade.toCurrency}`] : []),
+      ...(trade.toAmount !== undefined ? [`toAmount: ${trade.toAmount}`] : []),
       ...(trade.tags && trade.tags.length > 0
         ? [`tags: [${trade.tags.map(yamlString).join(", ")}]`]
         : []),
@@ -254,7 +266,8 @@ export class VaultRepository {
       "",
     ].join("\n");
 
-    const base = `${trade.date} ${trade.action}${trade.ticker ? ` ${trade.ticker}` : ""}`;
+    const suffix = trade.ticker ?? (trade.toCurrency ? `${trade.currency}-${trade.toCurrency}` : "");
+    const base = `${trade.date} ${trade.action}${suffix ? ` ${suffix}` : ""}`;
     return this.app.vault.create(await this.availablePath(folder, base), lines);
   }
 

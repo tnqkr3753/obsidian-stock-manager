@@ -1,7 +1,7 @@
 import { AbstractInputSuggest, Modal, Notice, Setting, type App } from "obsidian";
 import type StockManagerPlugin from "../../main";
 import { parseTrade } from "../data/parse";
-import type { TradeAction } from "../domain/types";
+import type { HoldingClass, TradeAction } from "../domain/types";
 import type { SymbolSearchHit } from "../price/symbolSearch";
 import { toLocalDateString } from "../util/date";
 import { TickerSuggest } from "./tickerSuggest";
@@ -13,11 +13,15 @@ const ACTION_OPTIONS: Record<TradeAction, string> = {
   dividend: "배당",
   deposit: "입금",
   withdraw: "출금",
+  exchange: "환전 (계좌 내 통화 변경)",
 };
+
+const CURRENCIES = ["KRW", "USD", "JPY", "EUR"] as const;
 
 const needsTicker = (a: TradeAction): boolean =>
   ["buy", "sell", "opening", "dividend"].includes(a);
 const needsQtyPrice = (a: TradeAction): boolean => ["buy", "sell", "opening"].includes(a);
+const opensPosition = (a: TradeAction): boolean => a === "buy" || a === "opening";
 
 /** 계좌 입력 자동완성 — 기존 매매일지에 등장한 계좌명을 제안한다. */
 class AccountSuggest extends AbstractInputSuggest<string> {
@@ -51,6 +55,9 @@ export class TradeModal extends Modal {
   private price = "";
   private amount = "";
   private currency = "KRW";
+  private toCurrency = "USD";
+  private toAmount = "";
+  private assetClass: HoldingClass = "stock"; // 새 종목 노트를 만들 때만 적용
   private account = "";
   private tags = "";
   private memo = "";
@@ -116,15 +123,42 @@ export class TradeModal extends Modal {
         t.setPlaceholder("71000").setValue(this.price).onChange((v) => (this.price = v)),
       );
     } else {
-      new Setting(contentEl).setName("금액").addText((t) =>
-        t.setPlaceholder("41200").setValue(this.amount).onChange((v) => (this.amount = v)),
-      );
+      new Setting(contentEl)
+        .setName(this.action === "exchange" ? "내준 금액" : "금액")
+        .addText((t) =>
+          t.setPlaceholder("41200").setValue(this.amount).onChange((v) => (this.amount = v)),
+        );
     }
 
-    new Setting(contentEl).setName("통화").addDropdown((dd) => {
-      ["KRW", "USD", "JPY", "EUR"].forEach((c) => dd.addOption(c, c));
-      dd.setValue(this.currency).onChange((v) => (this.currency = v));
-    });
+    new Setting(contentEl)
+      .setName(this.action === "exchange" ? "내준 통화" : "통화")
+      .addDropdown((dd) => {
+        CURRENCIES.forEach((c) => dd.addOption(c, c));
+        dd.setValue(this.currency).onChange((v) => (this.currency = v));
+      });
+
+    if (this.action === "exchange") {
+      new Setting(contentEl)
+        .setName("받은 금액")
+        .setDesc("실제 체결된 금액 — 환전 수수료·스프레드가 반영된 값")
+        .addText((t) =>
+          t.setPlaceholder("1000").setValue(this.toAmount).onChange((v) => (this.toAmount = v)),
+        );
+      new Setting(contentEl).setName("받은 통화").addDropdown((dd) => {
+        CURRENCIES.forEach((c) => dd.addOption(c, c));
+        dd.setValue(this.toCurrency).onChange((v) => (this.toCurrency = v));
+      });
+    }
+
+    if (opensPosition(this.action)) {
+      new Setting(contentEl)
+        .setName("자산군")
+        .setDesc("처음 기록하는 종목일 때만 적용 — 기존 종목은 종목 노트의 assetClass를 수정하세요")
+        .addDropdown((dd) => {
+          dd.addOption("stock", "주식").addOption("bond", "채권");
+          dd.setValue(this.assetClass).onChange((v) => (this.assetClass = v as HoldingClass));
+        });
+    }
 
     new Setting(contentEl)
       .setName("회고 태그")
@@ -174,6 +208,8 @@ export class TradeModal extends Modal {
         price: this.price || undefined,
         amount: this.amount || undefined,
         currency: this.currency,
+        toCurrency: this.action === "exchange" ? this.toCurrency : undefined,
+        toAmount: this.action === "exchange" ? this.toAmount || undefined : undefined,
         tags: this.tags ? this.tags.split(",") : [],
       },
       "입력값",
@@ -198,15 +234,16 @@ export class TradeModal extends Modal {
 
     try {
       const file = await this.plugin.repository.createTradeNote(result.value, memoWithChecklist);
-      // 검색으로 고른 미등록 종목이면 메타 노트를 함께 만들어 시세·태그 분석이 바로 동작하게
-      const ticker = result.value.ticker;
-      if (
-        this.pickedHit &&
-        ticker === this.pickedHit.ticker &&
-        !this.plugin.state?.metas[ticker]
-      ) {
+      // 미등록 종목이면 메타 노트를 함께 만들어 자산군·시세·태그 분석이 바로 동작하게.
+      // 검색으로 고른 종목은 검색 결과를, 직접 입력한 종목은 입력값을 그대로 쓴다.
+      const { ticker, action, currency } = result.value;
+      if (ticker && opensPosition(action) && !this.plugin.state?.metas[ticker]) {
+        const base =
+          this.pickedHit && this.pickedHit.ticker === ticker
+            ? this.pickedHit
+            : { ticker, name: ticker, currency };
         await this.plugin.repository
-          .createStockNote(this.pickedHit)
+          .createStockNote({ ...base, assetClass: this.assetClass })
           .then((stockFile) => new Notice(`종목 노트도 만들었어요: ${stockFile.basename}`))
           .catch(() => undefined); // 종목 노트 실패가 매매 기록 자체를 막지 않게
       }

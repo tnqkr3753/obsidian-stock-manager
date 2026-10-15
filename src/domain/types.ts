@@ -1,7 +1,14 @@
 export type AssetClass = "stock" | "bond" | "cash";
 export type HoldingClass = Exclude<AssetClass, "cash">;
 
-export type TradeAction = "buy" | "sell" | "opening" | "dividend" | "deposit" | "withdraw";
+export type TradeAction =
+  | "buy"
+  | "sell"
+  | "opening"
+  | "dividend"
+  | "deposit"
+  | "withdraw"
+  | "exchange";
 
 export const TRADE_ACTIONS: readonly TradeAction[] = [
   "buy",
@@ -10,6 +17,7 @@ export const TRADE_ACTIONS: readonly TradeAction[] = [
   "dividend",
   "deposit",
   "withdraw",
+  "exchange",
 ];
 
 export const DEFAULT_ACCOUNT = "기본";
@@ -23,7 +31,9 @@ export interface Trade {
   ticker?: string;
   qty?: number;
   price?: number; // 종목 통화 기준
-  amount?: number; // dividend/deposit/withdraw 금액
+  amount?: number; // dividend/deposit/withdraw 금액, exchange는 내준 금액(currency 기준)
+  toCurrency?: string; // exchange: 받은 통화
+  toAmount?: number; // exchange: 받은 금액(toCurrency 기준)
   tags?: readonly string[]; // 회고 태그 (손절, 원칙매수 ...)
   memo?: string;
   path?: string; // vault 내 노트 경로

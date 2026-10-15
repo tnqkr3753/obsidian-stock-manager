@@ -83,6 +83,13 @@ export function parseTrade(fm: Frontmatter, path: string): Result<Trade> {
     amount: asNumber(fm["amount"]),
     tags: asTags(fm["tags"]),
     path,
+    // 환전 필드는 exchange일 때만 — 다른 기록의 객체 모양을 바꾸지 않는다
+    ...(action === "exchange"
+      ? {
+          toCurrency: asString(fm["toCurrency"])?.toUpperCase(),
+          toAmount: asNumber(fm["toAmount"]),
+        }
+      : {}),
   };
 
   const isPositionAction = ["buy", "sell", "opening"].includes(trade.action);
@@ -95,6 +102,13 @@ export function parseTrade(fm: Frontmatter, path: string): Result<Trade> {
     if (!trade.amount || trade.amount <= 0) return err(`amount는 양수여야 합니다: ${path}`);
   } else if (!trade.amount || trade.amount <= 0) {
     return err(`amount는 양수여야 합니다: ${path}`);
+  }
+  if (trade.action === "exchange") {
+    if (!trade.toCurrency) return err(`환전 기록에 toCurrency가 없습니다: ${path}`);
+    if (trade.toCurrency === trade.currency) {
+      return err(`환전 전후 통화가 같습니다(${trade.currency}): ${path}`);
+    }
+    if (!trade.toAmount || trade.toAmount <= 0) return err(`toAmount는 양수여야 합니다: ${path}`);
   }
 
   return ok(trade);
