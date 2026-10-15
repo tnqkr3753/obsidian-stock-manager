@@ -1,6 +1,6 @@
 {
   "name": "obsidian-stock-manager",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Toss-style stock portfolio manager for Obsidian — trade journal as the source of truth",
   "main": "main.js",
   "scripts": {
@@ -12,7 +12,12 @@
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "release": "git push --follow-tags"
   },
-  "keywords": ["obsidian", "plugin", "stock", "portfolio"],
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "stock",
+    "portfolio"
+  ],
   "author": "passionkdy",
   "license": "MIT",
   "devDependencies": {
