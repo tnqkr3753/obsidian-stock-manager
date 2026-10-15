@@ -459,3 +459,12 @@ span.sm-alloc-cash, .sm-dot.sm-alloc-cash, .sm-dev-fill.sm-alloc-cash { backgrou
 .sm-embed { border-radius: 16px; }
 .sm-modal .sm-csv-area { width: 100%; font-family: var(--font-monospace); font-size: 0.82em; }
 .sm-csv-preview { padding: 8px 0; font-size: 0.85em; }
+
+/* 업데이트 알림 버튼 */
+.sm-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}

@@ -25,6 +25,7 @@ import { TradeModal } from "./src/ui/tradeModal";
 import { CsvImportModal } from "./src/ui/csvModal";
 import { toLocalDateString } from "./src/util/date";
 import { noteBasename } from "./src/util/path";
+import { Updater } from "./src/update/updater";
 
 const MAX_SNAPSHOTS = 730;
 
@@ -71,6 +72,7 @@ export default class StockManagerPlugin extends Plugin {
   private snapshotList: AssetSnapshot[] = [];
   private snapshotsReady = false; // loadSnapshots 완료 전 저장·리포트 차단 (빈 리스트로 이력 덮어쓰기 방지)
   private snapshotsWritable = true; // 파일 파싱 실패 시 false — 저장하면 이력이 파괴되므로 읽기 전용
+  private updater!: Updater;
   private flow: AssetFlow = { points: [], latestProfit: 0, hasInvested: false, fxIncomplete: false };
 
   async onload(): Promise<void> {
@@ -88,6 +90,15 @@ export default class StockManagerPlugin extends Plugin {
       () => this.saveData(this.data),
     );
 
+    this.updater = new Updater({
+      plugin: this,
+      getSkippedVersion: () => this.data.settings.skippedVersion,
+      skipVersion: async (version) => {
+        this.data.settings = { ...this.data.settings, skippedVersion: version };
+        await this.saveData(this.data);
+      },
+    });
+
     this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
     this.registerView(VIEW_TYPE_TABLE, (leaf) => new TableView(leaf, this));
     this.registerView(VIEW_TYPE_REVIEWS, (leaf) => new ReviewsView(leaf, this));
@@ -102,6 +113,11 @@ export default class StockManagerPlugin extends Plugin {
       id: "open-table",
       name: "보유 종목 상세 테이블 열기",
       callback: () => void this.activateView(VIEW_TYPE_TABLE, "tab"),
+    });
+    this.addCommand({
+      id: "check-update",
+      name: "업데이트 확인",
+      callback: () => void this.checkForUpdate(),
     });
     this.addCommand({ id: "record-trade", name: "매매 기록", callback: () => this.openTradeModal() });
     this.addCommand({
@@ -171,6 +187,12 @@ export default class StockManagerPlugin extends Plugin {
           new Notice("주식 매니저 초기 로드에 실패했습니다. 콘솔을 확인해주세요.");
         }
         this.restartPolling();
+        // 시작 직후 네트워크 경합을 피해 잠시 뒤 조용히 확인
+        if (this.data.settings.autoUpdateCheck) {
+          this.registerInterval(
+            window.setTimeout(() => void this.updater.check(true), 5000),
+          );
+        }
       })();
     });
   }
@@ -232,6 +254,10 @@ export default class StockManagerPlugin extends Plugin {
     if (!first) return "3mo";
     const days = (Date.now() - Date.parse(first)) / 86_400_000;
     return days < 95 ? "3mo" : days < 185 ? "6mo" : days < 370 ? "1y" : "2y";
+  }
+
+  checkForUpdate(): Promise<void> {
+    return this.updater.check(false);
   }
 
   openTradeModal(): void {
@@ -513,6 +539,17 @@ class StockManagerSettingTab extends PluginSettingTab {
           save();
         }),
       );
+
+    new Setting(containerEl)
+      .setName("시작 시 업데이트 확인")
+      .setDesc(`Obsidian을 켤 때 GitHub에서 새 버전을 확인해 알려줍니다. 현재 ${this.plugin.manifest.version}`)
+      .addToggle((t) =>
+        t.setValue(s.autoUpdateCheck).onChange((v) => {
+          s.autoUpdateCheck = v;
+          save();
+        }),
+      )
+      .addButton((b) => b.setButtonText("지금 확인").onClick(() => void this.plugin.checkForUpdate()));
 
     containerEl.createEl("p", {
       cls: "sm-basis",

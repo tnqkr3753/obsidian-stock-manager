@@ -10,6 +10,8 @@ export interface StockManagerSettings {
   rebalanceTolerance: number; // %p 단위 허용 편차
   snapshotEnabled: boolean; // 하루 1회 총자산 스냅샷 저장
   benchmarks: BenchmarkSetting[]; // 자산 추이에 겹쳐 그릴 지수
+  autoUpdateCheck: boolean; // Obsidian 시작 시 새 버전 확인
+  skippedVersion: string; // "이 버전 건너뛰기"로 알림을 끈 버전
 }
 
 export const DEFAULT_SETTINGS: StockManagerSettings = {
@@ -22,6 +24,8 @@ export const DEFAULT_SETTINGS: StockManagerSettings = {
     { symbol: "^KS11", label: "KOSPI" },
     { symbol: "^GSPC", label: "S&P500" },
   ],
+  autoUpdateCheck: true,
+  skippedVersion: "",
 };
 
 export interface AssetSnapshot {
