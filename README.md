@@ -26,6 +26,12 @@ cp main.js manifest.json styles.css <vault>/.obsidian/plugins/stock-manager/
 
 옵시디언 설정 → 커뮤니티 플러그인에서 Stock Manager 활성화.
 
+## 업데이트
+
+v0.5.2부터 Obsidian을 켤 때 GitHub 최신 Release를 확인해 **"새 버전이 있습니다"** 알림을 띄운다.
+**업데이트** 버튼을 누르면 `main.js`·`styles.css`·`manifest.json`을 내려받아 교체하고 플러그인을 다시 불러온다.
+설정의 "시작 시 업데이트 확인"으로 끌 수 있고, 커맨드 "업데이트 확인"으로 수동 확인할 수 있다.
+
 ## 데이터 스키마
 
 기본 스캔 폴더는 `Stocks/` (설정에서 변경). 노트의 frontmatter `type`으로 구분한다.
@@ -197,10 +203,22 @@ npm run dev       # esbuild watch
 npm run build     # 타입체크 + 번들
 ```
 
+### 배포
+
+```bash
+npm version patch   # package.json·manifest.json·versions.json 버전을 올리고 커밋 + 태그
+npm run release     # 커밋·태그 push → GitHub Actions가 테스트·빌드 후 Release 생성
+```
+
+Release가 올라오면 각 기기의 Obsidian이 다음 실행 때 업데이트 알림을 띄운다.
+
 구조: `src/domain`(순수 계산, 테스트 대상) / `src/data`(frontmatter 파서·vault 저장소) /
 `src/price`(야후 시세·환율·캐시) / `src/ui`(뷰·모달·렌더러) / `main.ts`(플러그인 진입점).
 
 ## 이력
+
+- 2026-10-15 v0.5.2 — 앱 내 업데이트 알림·원클릭 업데이트, 태그 push 시 GitHub Actions 자동 Release
+- 2026-10-15 v0.5.1 — 환전(`exchange`) 기록, 매수 시 자산군(채권) 선택·직접 입력 티커 종목 노트 자동 생성
 
 - 2026-08-21 v0.5.0 — 5차: 메모 개편(`type: memo`, Memos 폴더, scope·리뷰 연결, 카드 상시 노출 + 작성 버튼), AI 리뷰 조회(`type: stock-review` — 오늘의 리뷰 카드, 필터·목록·본문 상세 뷰, 리뷰 메모 남기기), 목표 배분 조정 진입점(자산 구성 카드 버튼 + stock-config 노트 자동 생성), DESIGN.md 디자인 계약 명문화
 - 2026-08-14 v0.4.0 — 4차: 계좌 구분(계좌별 평단·현금·자산 카드·테이블 열), 자산 흐름 카드(총자산 vs 투입 원금), 대시보드 흐름 중심 재배치, 상세 테이블 진입 버튼
